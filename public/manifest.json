@@ -1,0 +1,46 @@
+{
+  "id": "/",
+  "name": "Siam Pharma Due Management ",
+  "short_name": "Siam Pharma Due Management ",
+  "description": "Siam Pharma Due Management - কাস্টমার বাকি ও দেনা-পাওনা হিসাব খাতা (Customer Due & Credit Ledger Management)",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#042014",
+  "theme_color": "#042014",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": [
+    "business",
+    "finance",
+    "medical",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png?v=2",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png?v=2",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

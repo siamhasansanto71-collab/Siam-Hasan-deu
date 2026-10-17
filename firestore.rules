@@ -1,0 +1,134 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Health check endpoint for connection validation
+    match /test/connection {
+      allow get: if true;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidCustomer(data, userId) {
+      return data.keys().hasAll(['name', 'phone', 'totalDue', 'ownerId']) &&
+             data.keys().hasOnly(['id', 'serialNumber', 'name', 'phone', 'totalDue', 'address', 'notes', 'ownerId', 'createdAt', 'updatedAt']) &&
+             data.ownerId == userId &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() > 0 && data.phone.size() <= 20 &&
+             data.totalDue is number &&
+             (!('serialNumber' in data) || data.serialNumber is number) &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 200)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 300)) &&
+             (!('createdAt' in data) || data.createdAt is string) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
+    function isValidTransaction(data, userId, expectedCustomerId) {
+      return data.keys().hasAll(['customerId', 'type', 'amount', 'previousBalance', 'newBalance', 'date', 'ownerId']) &&
+             data.keys().hasOnly(['id', 'customerId', 'type', 'amount', 'previousBalance', 'newBalance', 'description', 'date', 'ownerId', 'createdAt']) &&
+             data.ownerId == userId &&
+             (expectedCustomerId == '' || data.customerId == expectedCustomerId) &&
+             data.customerId is string && data.customerId.size() > 0 && data.customerId.size() <= 128 &&
+             data.type in ['due', 'payment', 'adjustment'] &&
+             data.amount is number &&
+             data.previousBalance is number &&
+             data.newBalance is number &&
+             data.date is string && data.date.size() <= 50 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 200)) &&
+             (!('createdAt' in data) || data.createdAt is string);
+    }
+
+    function isValidPharmacyProfile(data, userId) {
+      return data.keys().hasAll(['storeName', 'contactPhone']) &&
+             data.storeName is string && data.storeName.size() > 0 && data.storeName.size() <= 200 &&
+             data.contactPhone is string && data.contactPhone.size() > 0 && data.contactPhone.size() <= 50 &&
+             (!('storeNameBn' in data) || (data.storeNameBn is string && data.storeNameBn.size() <= 200)) &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 500)) &&
+             (!('proprietorName' in data) || (data.proprietorName is string && data.proprietorName.size() <= 200)) &&
+             (!('licenseNumber' in data) || (data.licenseNumber is string && data.licenseNumber.size() <= 200)) &&
+             (!('dgdaRegNumber' in data) || (data.dgdaRegNumber is string && data.dgdaRegNumber.size() <= 200)) &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 200)) &&
+             (!('tagline' in data) || (data.tagline is string && data.tagline.size() <= 500)) &&
+             (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 500000)) &&
+             (!('ownerId' in data) || data.ownerId == userId) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
+    function isValidDailySale(data, userId) {
+      return data.keys().hasAll(['amount', 'ownerId']) &&
+             data.ownerId == userId &&
+             data.amount is number &&
+             (!('note' in data) || (data.note is string && data.note.size() <= 300)) &&
+             (!('date' in data) || (data.date is string && data.date.size() <= 50)) &&
+             (!('createdAt' in data) || data.createdAt is string);
+    }
+
+    function isValidExpense(data, userId) {
+      return data.keys().hasAll(['category', 'amount', 'ownerId']) &&
+             data.ownerId == userId &&
+             data.category is string && data.category.size() > 0 && data.category.size() <= 100 &&
+             data.amount is number &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 200)) &&
+             (!('note' in data) || (data.note is string && data.note.size() <= 300)) &&
+             (!('date' in data) || (data.date is string && data.date.size() <= 50)) &&
+             (!('createdAt' in data) || data.createdAt is string);
+    }
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      match /profile/{profileId} {
+        allow get, list: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(profileId) && isValidPharmacyProfile(request.resource.data, userId);
+        allow delete: if isOwner(userId) && isValidId(profileId);
+      }
+
+      match /customers/{customerId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(customerId) && isValidCustomer(request.resource.data, userId);
+        allow update: if isOwner(userId) && isValidId(customerId) && isValidCustomer(request.resource.data, userId) && request.resource.data.ownerId == resource.data.ownerId;
+        allow delete: if isOwner(userId) && isValidId(customerId);
+
+        match /transactions/{transactionId} {
+          allow get, list: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidId(transactionId) && isValidTransaction(request.resource.data, userId, customerId);
+          allow update: if isOwner(userId) && isValidId(transactionId) && isValidTransaction(request.resource.data, userId, customerId) && request.resource.data.ownerId == resource.data.ownerId;
+          allow delete: if isOwner(userId) && isValidId(transactionId);
+        }
+      }
+
+      match /transactions/{transactionId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(transactionId) && isValidTransaction(request.resource.data, userId, '');
+        allow update: if isOwner(userId) && isValidId(transactionId) && isValidTransaction(request.resource.data, userId, '') && request.resource.data.ownerId == resource.data.ownerId;
+        allow delete: if isOwner(userId) && isValidId(transactionId);
+      }
+
+      match /dailySales/{saleId} {
+        allow get, list: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(saleId) && isValidDailySale(request.resource.data, userId);
+        allow delete: if isOwner(userId) && isValidId(saleId);
+      }
+
+      match /expenses/{expenseId} {
+        allow get, list: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(expenseId) && isValidExpense(request.resource.data, userId);
+        allow delete: if isOwner(userId) && isValidId(expenseId);
+      }
+    }
+  }
+}

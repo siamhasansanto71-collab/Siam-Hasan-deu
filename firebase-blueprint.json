@@ -1,0 +1,271 @@
+{
+  "entities": {
+    "Customer": {
+      "title": "Customer",
+      "description": "A pharmacy customer with credit/due ledger account",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the customer"
+        },
+        "serialNumber": {
+          "type": "number",
+          "description": "Sequential customer serial number for quick tracking"
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the customer",
+          "maxLength": 100
+        },
+        "phone": {
+          "type": "string",
+          "description": "Customer mobile phone number",
+          "maxLength": 20
+        },
+        "totalDue": {
+          "type": "number",
+          "description": "Current total outstanding due amount in BDT (৳)"
+        },
+        "address": {
+          "type": "string",
+          "description": "Optional address or locality",
+          "maxLength": 200
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional customer notes or references",
+          "maxLength": 300
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "User ID of the pharmacy owner"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": ["name", "phone", "totalDue", "ownerId"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A credit due addition, payment, or manual adjustment transaction",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the transaction"
+        },
+        "customerId": {
+          "type": "string",
+          "description": "ID of the customer this transaction belongs to"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["due", "payment", "adjustment"],
+          "description": "Type of ledger transaction"
+        },
+        "amount": {
+          "type": "number",
+          "description": "Transaction amount in BDT (৳)"
+        },
+        "previousBalance": {
+          "type": "number",
+          "description": "Balance before this transaction"
+        },
+        "newBalance": {
+          "type": "number",
+          "description": "Balance after this transaction"
+        },
+        "description": {
+          "type": "string",
+          "description": "Medicine item name, prescription note, or payment remark",
+          "maxLength": 200
+        },
+        "date": {
+          "type": "string",
+          "description": "User-selected or recorded transaction date string"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "User ID of the pharmacy owner"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation"
+        }
+      },
+      "required": ["customerId", "type", "amount", "previousBalance", "newBalance", "date", "ownerId"]
+    },
+    "PharmacyProfile": {
+      "title": "PharmacyProfile",
+      "description": "Pharmacy store branding, contact, address, proprietor, DGDA registration and logo information",
+      "type": "object",
+      "properties": {
+        "storeName": {
+          "type": "string",
+          "description": "English name of the pharmacy",
+          "maxLength": 100
+        },
+        "storeNameBn": {
+          "type": "string",
+          "description": "Bengali name of the pharmacy",
+          "maxLength": 100
+        },
+        "address": {
+          "type": "string",
+          "description": "Physical pharmacy shop location or city",
+          "maxLength": 300
+        },
+        "contactPhone": {
+          "type": "string",
+          "description": "Store mobile/phone contact number and WhatsApp",
+          "maxLength": 25
+        },
+        "proprietorName": {
+          "type": "string",
+          "description": "Name of the pharmacy owner or pharmacist",
+          "maxLength": 100
+        },
+        "licenseNumber": {
+          "type": "string",
+          "description": "Drug License number",
+          "maxLength": 100
+        },
+        "dgdaRegNumber": {
+          "type": "string",
+          "description": "DGDA Registration number",
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "description": "Direct pharmacy or proprietor email",
+          "maxLength": 100
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Pharmacy subtitle or system description",
+          "maxLength": 200
+        },
+        "logoUrl": {
+          "type": "string",
+          "description": "URL or base64 data URI of the pharmacy logo",
+          "maxLength": 500000
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "User ID of the pharmacy owner"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": ["storeName", "contactPhone"]
+    },
+    "DailySale": {
+      "title": "DailySale",
+      "description": "Daily quick sale cash ledger entry",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "note": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "ownerId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": ["amount", "ownerId"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Daily store expense entry",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "number"
+        },
+        "note": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "ownerId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": ["category", "amount", "ownerId"]
+    },
+    "ConnectionTest": {
+      "title": "ConnectionTest",
+      "description": "Health check document for testing Firestore backend connectivity",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "Status string"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/test/connection": {
+      "schema": "ConnectionTest",
+      "description": "Public health check endpoint for verifying connectivity"
+    },
+    "/users/{userId}/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Pharmacy customer dues ledger profiles belonging to a store owner"
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "All itemized sales, dues added, and payments recorded under the user ledger"
+    },
+    "/users/{userId}/customers/{customerId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Itemized date-wise dues added and payments made for a customer"
+    },
+    "/users/{userId}/profile/pharmacy": {
+      "schema": "PharmacyProfile",
+      "description": "Pharmacy store business profile, contact details and branding logo"
+    },
+    "/users/{userId}/dailySales/{saleId}": {
+      "schema": "DailySale",
+      "description": "Daily pharmacy sales records"
+    },
+    "/users/{userId}/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Daily pharmacy operating expenses"
+    }
+  }
+}

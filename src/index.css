@@ -1,0 +1,296 @@
+@import "tailwindcss";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  -webkit-text-size-adjust: 100%;
+}
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', 'Hind Siliguri', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    background-color: #03120c;
+    color: #f1f5f9;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  /* Accessible minimum text sizing across the application */
+  input, button, select, textarea {
+    font-family: inherit;
+    font-size: 14px;
+  }
+}
+
+/* Custom subtle dark scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(6, 30, 20, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(16, 185, 129, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.45);
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm 8mm 10mm 8mm;
+  }
+
+  body, html {
+    background: #ffffff !important;
+    color: #111827 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* Hide all app chrome, navigation, headers, footers, and UI controls */
+  .no-print, header, nav, footer, .bottom-nav, button, input, select, aside {
+    display: none !important;
+  }
+  
+  /* Flatten any open modal shells */
+  .modal-overlay, [role="dialog"], .fixed {
+    position: static !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+  
+  /* Isolated full-width statement rendering sized for A4 */
+  #printable-statement, .printable-container {
+    display: block !important;
+    position: relative !important;
+    width: 100% !important;
+    max-width: 794px !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    overflow: visible !important;
+  }
+
+  /* Table layout, header repeating, and page break rules */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  tbody tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  th, td {
+    padding: 6px 8px !important;
+    font-size: 10pt !important;
+    line-height: 1.35 !important;
+    word-break: break-word !important;
+  }
+
+  /* Avoid splitting summary cards, headers, and footer blocks across pages */
+  .statement-header,
+  .statement-totals,
+  .statement-summary,
+  .statement-footer,
+  .avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Image, emblem, and logo constraints */
+  img, svg {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .statement-logo {
+    max-width: 48px !important;
+    max-height: 48px !important;
+    object-fit: contain !important;
+  }
+}
+
+/* Customer Card Container */
+.customer-card {
+  background-color: #121e19;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: auto;
+  width: 100%;
+  box-sizing: border-box;
+  transition: all 0.2s ease-in-out;
+}
+
+.customer-card:hover {
+  background-color: #15251f;
+  border-color: rgba(0, 230, 118, 0.45);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+
+/* Card Header */
+.customer-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Action Buttons Container */
+.customer-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.customer-card-actions button {
+  flex: 1 1 auto;
+  min-width: 60px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  background-color: #1a2e25;
+  color: #34d399;
+  transition: all 0.15s ease-in-out;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.customer-card-actions button:hover {
+  background-color: #223f33;
+  color: #6ee7b7;
+}
+
+.customer-card-actions button:active {
+  transform: scale(0.97);
+}
+
+/* Bottom Navigation clearance container to prevent fixed bar overlap */
+.main-scroll-container {
+  padding-bottom: 96px; /* >80px safe clearance */
+}
+
+/* Clean border dividers */
+.section-divider-border {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Filter Tab Bar & Chip Buttons */
+.filter-tab-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  margin-bottom: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  scrollbar-width: none;
+}
+
+.filter-tab-container::-webkit-scrollbar {
+  display: none;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(6, 36, 26, 0.85);
+  color: #a7f3d0;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.filter-chip:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(0, 230, 118, 0.6);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.filter-chip.active {
+  background: linear-gradient(135deg, #10b981 0%, #00e676 100%);
+  color: #021a10;
+  font-weight: 900;
+  border-color: #00ff84;
+  box-shadow: 0 0 16px rgba(0, 230, 118, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+}
+

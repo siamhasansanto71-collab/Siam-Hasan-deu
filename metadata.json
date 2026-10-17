@@ -1,0 +1,8 @@
+{
+  "name": "S S Pharma - Customer Due & Credit Ledger",
+  "description": "Modern, secure customer dues and credit ledger management system for S S Pharma (এস এস ফার্মা) with real-time cloud sync, transaction tracking, and payment history.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

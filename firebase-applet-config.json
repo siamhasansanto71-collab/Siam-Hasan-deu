@@ -1,0 +1,13 @@
+{
+  "projectId": "siam-deu-pharma",
+  "appId": "1:24684421701:web:61c9a90169140aceceb92c",
+  "apiKey": "AIzaSyDGmfK-cHpN_8EenevmJdpdD-W8Jq56Z_Y",
+  "authDomain": "siam-deu-pharma.firebaseapp.com",
+  "databaseURL": "https://siam-deu-pharma-default-rtdb.firebaseio.com",
+  "storageBucket": "siam-deu-pharma.firebasestorage.app",
+  "messagingSenderId": "24684421701",
+  "firestoreDatabaseId": "(default)",
+  "measurementId": "",
+  "oAuthClientId": "",
+  "recaptchaSiteKey": ""
+}
