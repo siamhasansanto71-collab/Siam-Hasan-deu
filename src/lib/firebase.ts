@@ -42,7 +42,7 @@ const app = getApps().length === 0 ? initializeApp(FIREBASE_CONFIG) : getApps()[
 
 // Configure log level to suppress non-fatal connection warnings during offline/retry states
 try {
-  setLogLevel('error');
+  setLogLevel('silent');
 } catch {
   // ignore
 }

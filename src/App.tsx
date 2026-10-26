@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import { LedgerProvider, useLedger } from './context/LedgerContext';
@@ -26,6 +26,7 @@ import { SettingsMenuModal } from './components/SettingsMenuModal';
 import { WhatsAppReminderModal } from './components/WhatsAppReminderModal';
 import { NewSaleModal } from './components/NewSaleModal';
 import { LoginScreen } from './components/LoginScreen';
+import { SplashScreen } from './components/SplashScreen';
 import { Customer } from './types/ledger';
 import { CloudOff, LogIn, Pill } from 'lucide-react';
 import { PWAInstallBanner } from './components/PWAInstallBanner';
@@ -55,46 +56,49 @@ function Dashboard() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportCustomerId, setExportCustomerId] = useState<string | undefined>(undefined);
 
-  // Handlers
-  const handleOpenAddCustomer = () => {
+  // Handlers wrapped in useCallback for stable prop references
+  const handleOpenAddCustomer = useCallback(() => {
     setCustomerToEdit(null);
     setIsCustomerModalOpen(true);
-  };
+  }, []);
 
-  const handleOpenEditCustomer = (customer: Customer) => {
+  const handleOpenEditCustomer = useCallback((customer: Customer) => {
     setCustomerToEdit(customer);
     setIsCustomerModalOpen(true);
-  };
+  }, []);
 
-  const handleOpenLedger = (customer: Customer) => {
+  const handleOpenLedger = useCallback((customer: Customer) => {
     setSelectedCustomer(customer);
-  };
+  }, [setSelectedCustomer]);
 
-  const handleQuickPay = (customer: Customer) => {
+  const handleQuickPay = useCallback((customer: Customer) => {
     setPayModalCustomer(customer);
-  };
+  }, []);
 
-  const handleQuickDue = (customer: Customer) => {
+  const handleQuickDue = useCallback((customer: Customer) => {
     setDueModalCustomer(customer);
-  };
+  }, []);
 
-  const handleAdjustBalance = (customer: Customer) => {
+  const [exportReportType, setExportReportType] = useState<'sales_expense_report' | 'due_statement'>('sales_expense_report');
+
+  const handleAdjustBalance = useCallback((customer: Customer) => {
     setAdjustModalCustomer(customer);
-  };
+  }, []);
 
-  const handleOpenReports = () => {
+  const handleOpenReports = useCallback(() => {
     setExportCustomerId(undefined);
+    setExportReportType('sales_expense_report');
     setIsExportModalOpen(true);
-  };
+  }, []);
 
-  const handleScrollToCustomers = () => {
+  const handleScrollToCustomers = useCallback(() => {
     const el = document.getElementById('customers-section');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth' });
     }
-  };
+  }, []);
 
-  const handleTabChange = (tab: NavTab) => {
+  const handleTabChange = useCallback((tab: NavTab) => {
     setActiveTab(tab);
     if (tab === 'home') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -107,7 +111,7 @@ function Dashboard() {
     } else if (tab === 'settings') {
       setIsSettingsMenuOpen(true);
     }
-  };
+  }, [handleScrollToCustomers]);
 
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#061712] text-slate-100 flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
@@ -249,6 +253,7 @@ function Dashboard() {
           onOpenAdjustBalance={(c) => handleAdjustBalance(c)}
           onOpenExportStatement={(c) => {
             setExportCustomerId(c.id);
+            setExportReportType('due_statement');
             setIsExportModalOpen(true);
           }}
         />
@@ -275,14 +280,16 @@ function Dashboard() {
         />
       )}
 
-      <NewSaleModal
-        isOpen={isNewSaleModalOpen}
-        onClose={() => setIsNewSaleModalOpen(false)}
-        onOpenAddCustomer={handleOpenAddCustomer}
-        onOpenProfileModal={() => setIsProfileModalOpen(true)}
-        onOpenAboutModal={() => setIsAboutModalOpen(true)}
-        initialTab={newSaleModalTab}
-      />
+      {isNewSaleModalOpen && (
+        <NewSaleModal
+          isOpen={isNewSaleModalOpen}
+          onClose={() => setIsNewSaleModalOpen(false)}
+          onOpenAddCustomer={handleOpenAddCustomer}
+          onOpenProfileModal={() => setIsProfileModalOpen(true)}
+          onOpenAboutModal={() => setIsAboutModalOpen(true)}
+          initialTab={newSaleModalTab}
+        />
+      )}
 
       <WhatsAppReminderModal
         isOpen={isWhatsAppModalOpen}
@@ -317,6 +324,7 @@ function Dashboard() {
           setExportCustomerId(undefined);
         }}
         initialCustomerId={exportCustomerId}
+        initialReportType={exportReportType}
       />
 
       <AboutModal
@@ -383,9 +391,18 @@ function MainApp() {
 }
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    const handleReplaySplash = () => setShowSplash(true);
+    window.addEventListener('show-splash', handleReplaySplash);
+    return () => window.removeEventListener('show-splash', handleReplaySplash);
+  }, []);
+
   return (
     <AuthProvider>
       <LanguageProvider>
+        {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
         <MainApp />
       </LanguageProvider>
     </AuthProvider>

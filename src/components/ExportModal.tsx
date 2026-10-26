@@ -7,6 +7,8 @@ import {
   FileJson, 
   Calendar, 
   User, 
+  Users,
+  BarChart3,
   CheckCircle, 
   Sparkles,
   Loader2,
@@ -16,20 +18,27 @@ import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import { useLedger } from '../context/LedgerContext';
 import { Customer, Transaction } from '../types/ledger';
+import { ReportsSection } from './ReportsSection';
 
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialCustomerId?: string;
+  initialReportType?: 'sales_expense_report' | 'due_statement';
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({ 
   isOpen, 
   onClose,
-  initialCustomerId 
+  initialCustomerId,
+  initialReportType
 }) => {
   const { customers, stats, allTransactions, pharmacyProfile } = useLedger();
   const statementRef = useRef<HTMLDivElement>(null);
+
+  const [activeReportTab, setActiveReportTab] = useState<'sales_expense_report' | 'due_statement'>(
+    initialReportType || (initialCustomerId ? 'due_statement' : 'sales_expense_report')
+  );
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(initialCustomerId || 'all');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'last7' | 'thisMonth'>('all');
@@ -37,14 +46,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
 
-  // Sync selectedCustomerId when modal opens or initialCustomerId changes
+  // Sync selectedCustomerId and activeReportTab when modal opens or initial props change
   React.useEffect(() => {
+    if (initialReportType) {
+      setActiveReportTab(initialReportType);
+    } else if (initialCustomerId) {
+      setActiveReportTab('due_statement');
+    }
     if (initialCustomerId) {
       setSelectedCustomerId(initialCustomerId);
     } else {
       setSelectedCustomerId('all');
     }
-  }, [initialCustomerId, isOpen]);
+  }, [initialCustomerId, initialReportType, isOpen]);
 
   // Lookup map for customer name & phone
   const customerMap = useMemo(() => {
@@ -751,25 +765,63 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 <Sparkles className="w-4 h-4" />
               </span>
               <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">
-                একাউন্ট বিবৃতি ও PDF রিপোর্ট (Account Statement)
+                {activeReportTab === 'sales_expense_report'
+                  ? '📊 মাসিক বিক্রি, খরচ ও বাকি রিপোর্ট (Sales & Expense Report)'
+                  : 'একাউন্ট বিবৃতি ও PDF রিপোর্ট (Customer Account Statement)'}
               </h3>
             </div>
             <p className="text-xs text-emerald-300/80 mt-0.5">
-              কাস্টমার লেনদেন ও বাকির খাতার পূর্ণাঙ্গ প্রিন্ট ও PDF স্টেটমেন্ট জেনারেটর
+              {activeReportTab === 'sales_expense_report'
+                ? 'দৈনিক ক্যাশ বিক্রি, ফার্মেসি খরচ এবং বাকি হিসাবের দীর্ঘ চার্ট ও PDF এক্সপোর্ট'
+                : 'কাস্টমার লেনদেন ও বাকির খাতার পূর্ণাঙ্গ প্রিন্ট ও PDF স্টেটমেন্ট জেনারেটর'}
             </p>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-emerald-950/80 text-slate-300 hover:text-white hover:bg-emerald-900 border border-[rgba(255,255,255,0.15)] transition-all"
+            className="p-2 rounded-xl bg-emerald-950/80 text-slate-300 hover:text-white hover:bg-emerald-900 border border-[rgba(255,255,255,0.15)] transition-all cursor-pointer"
             title="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Toolbar & Filters */}
-        <div className="no-print p-3.5 sm:p-4 bg-[#041a12] border-b border-[rgba(255,255,255,0.12)] flex flex-wrap items-center justify-between gap-3">
+        {/* Top Mode Switcher Tabs */}
+        <div className="no-print px-4 py-2.5 bg-[#03150e] border-b border-[rgba(255,255,255,0.12)] flex items-center gap-2 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveReportTab('sales_expense_report')}
+            className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+              activeReportTab === 'sales_expense_report'
+                ? 'bg-emerald-500 text-slate-950 font-black shadow-[0_0_12px_rgba(0,230,118,0.4)]'
+                : 'text-slate-300 hover:text-white bg-[#072419] border border-white/10'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>📊 মাসিক বিক্রি ও খরচ রিপোর্ট (Monthly Report)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveReportTab('due_statement')}
+            className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+              activeReportTab === 'due_statement'
+                ? 'bg-emerald-500 text-slate-950 font-black shadow-[0_0_12px_rgba(0,230,118,0.4)]'
+                : 'text-slate-300 hover:text-white bg-[#072419] border border-white/10'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>👥 কাস্টমার বাকির স্টেটমেন্ট (Customer Dues)</span>
+          </button>
+        </div>
+
+        {activeReportTab === 'sales_expense_report' ? (
+          <div className="flex-1 overflow-y-auto p-2 sm:p-4 bg-[#071712]">
+            <ReportsSection onClose={onClose} isModal />
+          </div>
+        ) : (
+          <>
+            {/* Toolbar & Filters */}
+            <div className="no-print p-3.5 sm:p-4 bg-[#041a12] border-b border-[rgba(255,255,255,0.12)] flex flex-wrap items-center justify-between gap-3">
           {/* Left: Filter Controls */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-1 min-w-[280px]">
             {/* View Mode Toggle: Summary per customer vs Detailed Transactions */}
@@ -1320,12 +1372,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-emerald-950/80 text-xs font-semibold text-slate-300 hover:text-white border border-[rgba(255,255,255,0.15)] transition-all"
+              className="px-4 py-2 rounded-xl bg-emerald-950/80 text-xs font-semibold text-slate-300 hover:text-white border border-[rgba(255,255,255,0.15)] transition-all cursor-pointer"
             >
               বন্ধ করুন (Close)
             </button>
           </div>
         </div>
+          </>
+        )}
 
       </div>
     </div>

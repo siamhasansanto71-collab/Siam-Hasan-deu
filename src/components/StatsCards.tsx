@@ -16,15 +16,18 @@ interface StatsCardsProps {
   onScrollToReports?: () => void;
 }
 
-export const StatsCards: React.FC<StatsCardsProps> = ({ 
+const StatsCardsComponent: React.FC<StatsCardsProps> = ({ 
   onOpenAddCustomerModal,
   onSelectFilter,
   onOpenNewSale,
 }) => {
-  const { stats, customers } = useLedger();
+  const { stats, customers, todaySalesAmount } = useLedger();
 
   const totalCust = customers.length;
-  const newSaleTodayAmount = stats.todayCollections > 0 ? stats.todayCollections : 0;
+  // Accurately reflect today's total sales on the Home Dashboard card
+  const homeSaleAmount = (todaySalesAmount !== undefined && todaySalesAmount > 0) 
+    ? todaySalesAmount 
+    : ((stats.todaySales && stats.todaySales > 0) ? stats.todaySales : 0);
   const dueTotal = stats.totalDues;
   const clearedCount = stats.clearedCustomers ?? customers.filter((c) => c.totalDue === 0).length;
 
@@ -79,23 +82,23 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           {/* MIDDLE: Card Title */}
           <span 
             className="text-[10px] sm:text-[11px] font-bold text-cyan-300 tracking-wider uppercase block text-center truncate w-full"
-            title="NEW SALE"
+            title="SALE"
           >
-            NEW SALE
+            SALE
           </span>
 
           {/* LOWER: Main Numeric Value */}
           <div className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-baseline justify-center gap-0.5 leading-none">
             <span className="text-cyan-400 font-bold text-sm flex-shrink-0">৳</span>
-            <span className="tabular-nums">
-              {newSaleTodayAmount > 0 ? newSaleTodayAmount.toLocaleString('en-US') : '0'}
+            <span id="homeSaleValue" className="tabular-nums">
+              {homeSaleAmount > 0 ? homeSaleAmount.toLocaleString('en-US') : '0'}
             </span>
           </div>
 
           {/* BOTTOM: Subtitle / Status Text */}
           <p className="text-[10px] sm:text-[11px] text-cyan-300/80 font-medium truncate flex items-center justify-center gap-1 w-full text-center">
             <TrendingUp className="w-3 h-3 text-cyan-400 flex-shrink-0" />
-            <span className="truncate">Today's Cash Sale</span>
+            <span className="truncate">Today's Total Sale</span>
           </p>
 
           <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
@@ -172,3 +175,5 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     </div>
   );
 };
+
+export const StatsCards = React.memo(StatsCardsComponent);

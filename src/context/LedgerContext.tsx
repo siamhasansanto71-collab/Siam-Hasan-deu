@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { 
   collection, 
   doc, 
@@ -17,6 +17,7 @@ import { useAuth } from './AuthContext';
 import { Customer, Transaction, LedgerStats, PharmacyProfile, DailySale, Expense } from '../types/ledger';
 import { dexieSyncManager, type SyncStats } from '../lib/dexieSync';
 import { dexieDb } from '../lib/dexieDb';
+import { sanitizeSalesRecords } from '../lib/formatDateTime';
 
 interface LedgerContextType {
   customers: Customer[];
@@ -42,7 +43,7 @@ interface LedgerContextType {
   // Daily Sales & Pharmacy Expenses tracking
   dailySales: DailySale[];
   expenses: Expense[];
-  addDailySale: (amount: number, note?: string, customDate?: string) => Promise<void>;
+  addDailySale: (amount: number, note?: string, customDate?: string, extra?: { type?: 'CASH' | 'DUE' | 'PAID_SALE' | 'DUE_SALE'; customerId?: string; customerName?: string; items?: any[]; total?: number; id?: string; isDue?: boolean; dueAmount?: number; paidAmount?: number; medicineDetails?: string; itemNote?: string; customer?: any; time?: string }) => Promise<void>;
   deleteDailySale: (id: string) => Promise<void>;
   addExpense: (category: string, amount: number, note?: string, customDate?: string) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
@@ -59,19 +60,34 @@ interface LedgerContextType {
 
 const LedgerContext = createContext<LedgerContextType | undefined>(undefined);
 
-// Key generators scoped by user ID or 'demo'
-const getCustomerStorageKey = (uid: string | null | undefined) => 
+// Key generators strictly scoped by user ID or 'demo'
+export const getCustomerStorageKey = (uid: string | null | undefined) => 
   uid ? `ss_pharma_customers_${uid}` : 'ss_pharma_customers_demo';
-const getTxStorageKey = (uid: string | null | undefined, custId: string) => 
+export const getTxStorageKey = (uid: string | null | undefined, custId: string) => 
   uid ? `ss_pharma_tx_${uid}_${custId}` : `ss_pharma_tx_demo_${custId}`;
-const getAllTxStorageKey = (uid: string | null | undefined) => 
+export const getAllTxStorageKey = (uid: string | null | undefined) => 
   uid ? `ss_pharma_all_tx_${uid}` : 'ss_pharma_all_tx_demo';
-const getProfileStorageKey = (uid: string | null | undefined) => 
+export const getProfileStorageKey = (uid: string | null | undefined) => 
   uid ? `ss_pharma_profile_${uid}` : 'ss_pharma_profile_demo';
-const getSalesStorageKey = (uid: string | null | undefined) => 
+export const getSalesStorageKey = (uid: string | null | undefined) => 
   uid ? `ss_pharma_sales_${uid}` : 'ss_pharma_sales_demo';
-const getExpensesStorageKey = (uid: string | null | undefined) => 
+export const getExpensesStorageKey = (uid: string | null | undefined) => 
   uid ? `ss_pharma_expenses_${uid}` : 'ss_pharma_expenses_demo';
+export const getInventoryStorageKey = (uid: string | null | undefined) => 
+  uid ? `ss_pharma_inventory_${uid}` : 'ss_pharma_inventory_demo';
+export const getMetricsStorageKey = (uid: string | null | undefined, metric: string) => 
+  uid ? `ss_pharma_${metric}_${uid}` : `ss_pharma_${metric}_demo`;
+
+export const purgeLegacyUnscopedStorage = () => {
+  try {
+    localStorage.removeItem('ss_pharma_sales');
+    localStorage.removeItem('ss_pharma_sales_records');
+    localStorage.removeItem('totalSales');
+    localStorage.removeItem('cashSales');
+    localStorage.removeItem('dueSales');
+    localStorage.removeItem('pharmacyInventory');
+  } catch {}
+};
 
 export const DEFAULT_PHARMACY_PROFILE: PharmacyProfile = {
   storeName: '',
@@ -106,6 +122,66 @@ export const sanitizePharmacyProfile = (
     ownerId: raw.ownerId || base.ownerId,
     updatedAt: raw.updatedAt || base.updatedAt || new Date().toISOString()
   };
+};
+
+/**
+ * Strict Document Sanitizers for Firestore Security Rules compliance
+ * Guarantees schema validity against isValidCustomer, isValidTransaction, isValidDailySale
+ */
+export const cleanCustomerForFirestore = (c: Customer, ownerId: string) => {
+  const clean: any = {
+    name: String(c.name || '').substring(0, 100),
+    phone: String(c.phone || '').substring(0, 20),
+    totalDue: Math.max(0, Number(c.totalDue) || 0),
+    ownerId: ownerId,
+  };
+  if (c.id) clean.id = String(c.id);
+  if (typeof c.serialNumber === 'number') clean.serialNumber = c.serialNumber;
+  if (c.address) clean.address = String(c.address).substring(0, 200);
+  if (c.notes) clean.notes = String(c.notes).substring(0, 300);
+  if (c.createdAt) clean.createdAt = String(c.createdAt);
+  clean.updatedAt = c.updatedAt || new Date().toISOString();
+  return clean;
+};
+
+export const cleanTxForFirestore = (tx: Transaction, ownerId: string) => {
+  const clean: any = {
+    id: String(tx.id),
+    customerId: String(tx.customerId),
+    type: tx.type, // 'due' | 'payment' | 'adjustment'
+    amount: Number(tx.amount) || 0,
+    previousBalance: Number(tx.previousBalance) || 0,
+    newBalance: Math.max(0, Number(tx.newBalance) || 0),
+    date: String(tx.date || '').substring(0, 50),
+    ownerId: ownerId,
+    createdAt: tx.createdAt || new Date().toISOString()
+  };
+  if (tx.description) {
+    clean.description = String(tx.description).substring(0, 200);
+  }
+  return clean;
+};
+
+export const cleanDailySaleForFirestore = (sale: DailySale, ownerId: string) => {
+  const clean: any = {
+    amount: Number(sale.amount || sale.total || 0),
+    ownerId: ownerId,
+    createdAt: sale.createdAt || new Date().toISOString()
+  };
+  if (sale.id) clean.id = String(sale.id);
+  if (sale.date) clean.date = String(sale.date).substring(0, 50);
+  if (sale.note) clean.note = String(sale.note).substring(0, 300);
+  if (sale.type) clean.type = sale.type;
+  if (sale.customerId) clean.customerId = String(sale.customerId);
+  if (sale.customerName) clean.customerName = String(sale.customerName).substring(0, 100);
+  if (typeof sale.isDue === 'boolean') clean.isDue = sale.isDue;
+  if (typeof sale.dueAmount === 'number') clean.dueAmount = sale.dueAmount;
+  if (typeof sale.paidAmount === 'number') clean.paidAmount = sale.paidAmount;
+  if (typeof sale.total === 'number') clean.total = sale.total;
+  if (sale.itemNote) clean.itemNote = String(sale.itemNote).substring(0, 300);
+  if (sale.medicineDetails) clean.medicineDetails = String(sale.medicineDetails).substring(0, 500);
+  if (sale.time) clean.time = String(sale.time);
+  return clean;
 };
 
 // Initial sample data ONLY used for unauthenticated Demo Mode
@@ -349,119 +425,7 @@ const INITIAL_DEMO_EXPENSES: Expense[] = [
 
 export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isCloudSynced, setIsCloudSynced] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-
-  // Dexie.js IndexedDB Sync State
-  const [syncStats, setSyncStats] = useState<SyncStats>({
-    state: 'idle',
-    pendingCount: 0,
-    lastSyncedAt: null,
-    errorMessage: null,
-    isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
-  });
-
-  const [dexieStorageStats, setDexieStorageStats] = useState({
-    customerCount: 0,
-    transactionCount: 0,
-    pendingQueueCount: 0,
-  });
-
-  // Track Dexie sync manager events and IndexedDB storage stats
-  useEffect(() => {
-    dexieSyncManager.setActiveUser(user);
-    const ownerId = user ? user.uid : 'demo_user';
-    const unsubscribe = dexieSyncManager.subscribe((stats) => {
-      setSyncStats(stats);
-      dexieDb.getStorageStats(ownerId).then(setDexieStorageStats).catch(() => {});
-    });
-    dexieDb.getStorageStats(ownerId).then(setDexieStorageStats).catch(() => {});
-    return () => unsubscribe();
-  }, [user]);
-
-  const triggerManualSync = async () => {
-    if (!user) return;
-    await dexieSyncManager.processSyncQueue(user);
-    const stats = await dexieDb.getStorageStats(user.uid);
-    setDexieStorageStats(stats);
-  };
-
-  const pullLatestFromCloud = async () => {
-    if (!user) return;
-    await dexieSyncManager.fullPullFromFirestore(user);
-    const stats = await dexieDb.getStorageStats(user.uid);
-    setDexieStorageStats(stats);
-  };
-  
-  // Load all transactions from local cache helper
-  const getLocalAllTransactions = (): Transaction[] => {
-    try {
-      const key = getAllTxStorageKey(user ? user.uid : null);
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {
-      // ignore
-    }
-    return [];
-  };
-
-  const saveLocalAllTransactions = (txs: Transaction[]) => {
-    try {
-      const key = getAllTxStorageKey(user ? user.uid : null);
-      localStorage.setItem(key, JSON.stringify(txs));
-    } catch {
-      // ignore
-    }
-  };
-
-  // All transactions belonging to the current user (seeded from local cache for instant offline visibility)
-  const [allUserTransactions, setAllUserTransactions] = useState<Transaction[]>(() => {
-    try {
-      const key = getAllTxStorageKey(null);
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {
-      // ignore
-    }
-    return [];
-  });
-  const [loadingTransactions, setLoadingTransactions] = useState(false);
-
-  // Pharmacy Profile
-  const [pharmacyProfile, setPharmacyProfile] = useState<PharmacyProfile>(DEFAULT_PHARMACY_PROFILE);
-
-  // Daily Sales & Pharmacy Expenses
-  const [dailySales, setDailySales] = useState<DailySale[]>(() => {
-    try {
-      const key = getSalesStorageKey(null);
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return INITIAL_DEMO_SALES;
-  });
-
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    try {
-      const key = getExpensesStorageKey(null);
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return INITIAL_DEMO_EXPENSES;
-  });
+  const previousUidRef = useRef<string | null | undefined>(undefined);
 
   // Load from local storage helper (strictly scoped by user UID)
   const getLocalCustomers = (): Customer[] => {
@@ -489,9 +453,149 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch {
       // ignore
     }
-    // Clean empty state for new user!
     return [];
   };
+
+  // Load all transactions from local cache helper
+  const getLocalAllTransactions = (): Transaction[] => {
+    try {
+      const key = getAllTxStorageKey(user ? user.uid : null);
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  };
+
+  const saveLocalAllTransactions = (txs: Transaction[]) => {
+    try {
+      const key = getAllTxStorageKey(user ? user.uid : null);
+      localStorage.setItem(key, JSON.stringify(txs));
+    } catch {
+      // ignore
+    }
+  };
+
+  const [customers, setCustomers] = useState<Customer[]>(() => getLocalCustomers());
+  const [allUserTransactions, setAllUserTransactions] = useState<Transaction[]>(() => getLocalAllTransactions());
+  const [dailySales, setDailySales] = useState<DailySale[]>(() => {
+    try {
+      const saved = localStorage.getItem(getSalesStorageKey(user ? user.uid : null));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return sanitizeSalesRecords(parsed);
+      }
+    } catch {}
+    return user ? [] : INITIAL_DEMO_SALES;
+  });
+  const [expenses, setExpenses] = useState<Expense[]>(() => {
+    try {
+      const saved = localStorage.getItem(getExpensesStorageKey(user ? user.uid : null));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return user ? [] : INITIAL_DEMO_EXPENSES;
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [isCloudSynced, setIsCloudSynced] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [pharmacyProfile, setPharmacyProfile] = useState<PharmacyProfile>(DEFAULT_PHARMACY_PROFILE);
+
+  // Dexie.js IndexedDB Sync State
+  const [syncStats, setSyncStats] = useState<SyncStats>({
+    state: 'idle',
+    pendingCount: 0,
+    lastSyncedAt: null,
+    errorMessage: null,
+    isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+  });
+
+  const [dexieStorageStats, setDexieStorageStats] = useState({
+    customerCount: 0,
+    transactionCount: 0,
+    pendingQueueCount: 0,
+  });
+
+  // 0. Account Switch & Identity Change Guard:
+  // ONLY reset in-memory state when switching between different accounts, NOT on initial load or reload.
+  useEffect(() => {
+    const currentUid = user ? user.uid : null;
+    const isFirstMount = previousUidRef.current === undefined;
+    const isDifferentUser = !isFirstMount && previousUidRef.current !== currentUid;
+
+    if (isDifferentUser) {
+      // Genuine account switch: wipe states so no cross-account data leaks
+      setCustomers([]);
+      setAllUserTransactions([]);
+      setDailySales([]);
+      setExpenses([]);
+      setSelectedCustomer(null);
+      setPharmacyProfile(DEFAULT_PHARMACY_PROFILE);
+      setLoading(true);
+      setIsCloudSynced(false);
+    }
+    previousUidRef.current = currentUid;
+
+    if (user) {
+      // Authenticated account: purge legacy un-namespaced keys and wipe demo data from Dexie
+      purgeLegacyUnscopedStorage();
+      dexieDb.clearDemoData().catch(() => {});
+    }
+  }, [user?.uid]);
+
+  // Track Dexie sync manager events and IndexedDB storage stats (debounced to avoid heavy repeated IndexedDB scans)
+  useEffect(() => {
+    dexieSyncManager.setActiveUser(user);
+    const ownerId = user ? user.uid : 'demo_user';
+    let isMounted = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const fetchStatsDebounced = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!isMounted) return;
+        dexieDb.getStorageStats(ownerId).then((stats) => {
+          if (isMounted) setDexieStorageStats(stats);
+        }).catch(() => {});
+      }, 250);
+    };
+
+    const unsubscribe = dexieSyncManager.subscribe((stats) => {
+      setSyncStats(stats);
+      fetchStatsDebounced();
+    });
+    dexieDb.getStorageStats(ownerId).then((st) => {
+      if (isMounted) setDexieStorageStats(st);
+    }).catch(() => {});
+
+    return () => {
+      isMounted = false;
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [user]);
+
+  const triggerManualSync = useCallback(async () => {
+    if (!user) return;
+    await dexieSyncManager.processSyncQueue(user);
+    const stats = await dexieDb.getStorageStats(user.uid);
+    setDexieStorageStats(stats);
+  }, [user]);
+
+  const pullLatestFromCloud = useCallback(async () => {
+    if (!user) return;
+    await dexieSyncManager.fullPullFromFirestore(user);
+    const stats = await dexieDb.getStorageStats(user.uid);
+    setDexieStorageStats(stats);
+  }, [user]);
 
   const getLocalTransactions = (custId: string): Transaction[] => {
     const key = getTxStorageKey(user?.uid, custId);
@@ -651,14 +755,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           list.push(docSnap.data() as Customer);
         });
 
-        setCustomers(list);
+        const remoteCustIds = new Set(list.map((c) => c.id));
+        setCustomers((prev) => {
+          const pendingLocal = prev.filter((c) => !remoteCustIds.has(c.id) && (!c.ownerId || c.ownerId === user.uid));
+          const merged = [...list, ...pendingLocal];
+          try {
+            localStorage.setItem(getCustomerStorageKey(user.uid), JSON.stringify(merged));
+          } catch (e) {
+            console.error('Failed to cache customers locally:', e);
+          }
+          return merged;
+        });
+
         // Rehydrate Dexie IndexedDB cache with latest cloud customers
         dexieSyncManager.rehydrateCustomers(user.uid, list).catch(() => {});
-        try {
-          localStorage.setItem(getCustomerStorageKey(user.uid), JSON.stringify(list));
-        } catch (e) {
-          console.error('Failed to cache customers locally:', e);
-        }
         setIsCloudSynced(true);
         setLoading(false);
       },
@@ -722,8 +832,13 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         snapshot.forEach((docSnap) => {
           list.push(docSnap.data() as Transaction);
         });
-        setAllUserTransactions(list);
-        saveLocalAllTransactions(list);
+        const remoteTxIds = new Set(list.map((t) => t.id));
+        setAllUserTransactions((prev) => {
+          const pendingLocal = prev.filter((t) => !remoteTxIds.has(t.id) && (!t.ownerId || t.ownerId === user.uid));
+          const merged = [...list, ...pendingLocal];
+          saveLocalAllTransactions(merged);
+          return merged;
+        });
         // Rehydrate Dexie IndexedDB cache
         dexieSyncManager.rehydrateTransactions(user.uid, list).catch(() => {});
       },
@@ -744,37 +859,61 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [user]);
 
   // Synchronize Daily Sales & Pharmacy Expenses with Dexie & Firestore
+  // Synchronize Daily Sales & Pharmacy Expenses with Dexie & Firestore
   useEffect(() => {
-    const ownerId = user ? user.uid : 'demo_user';
-
-    // 1. Initial load from Dexie IndexedDB cache
-    dexieDb.getDailySales(ownerId).then((cached) => {
-      if (cached && cached.length > 0) {
-        setDailySales(cached);
-      }
-    }).catch(() => {});
-
-    dexieDb.getExpenses(ownerId).then((cached) => {
-      if (cached && cached.length > 0) {
-        setExpenses(cached);
-      }
-    }).catch(() => {});
-
     if (!user) {
       try {
         const savedSales = localStorage.getItem(getSalesStorageKey(null));
         if (savedSales) {
           const parsed = JSON.parse(savedSales);
           if (Array.isArray(parsed) && parsed.length > 0) setDailySales(parsed);
+          else setDailySales(INITIAL_DEMO_SALES);
+        } else {
+          setDailySales(INITIAL_DEMO_SALES);
         }
         const savedExp = localStorage.getItem(getExpensesStorageKey(null));
         if (savedExp) {
           const parsed = JSON.parse(savedExp);
           if (Array.isArray(parsed) && parsed.length > 0) setExpenses(parsed);
+          else setExpenses(INITIAL_DEMO_EXPENSES);
+        } else {
+          setExpenses(INITIAL_DEMO_EXPENSES);
         }
-      } catch {}
+      } catch {
+        setDailySales(INITIAL_DEMO_SALES);
+        setExpenses(INITIAL_DEMO_EXPENSES);
+      }
       return;
     }
+
+    // 1. Initial load from Dexie IndexedDB cache for authenticated user only
+    dexieDb.getDailySales(user.uid).then((cached) => {
+      if (cached && cached.length > 0) {
+        setDailySales(cached.filter((s) => !s.ownerId || s.ownerId === user.uid));
+      } else {
+        try {
+          const savedSales = localStorage.getItem(getSalesStorageKey(user.uid));
+          if (savedSales) {
+            const parsed = JSON.parse(savedSales);
+            if (Array.isArray(parsed)) setDailySales(parsed.filter((s: any) => !s.ownerId || s.ownerId === user.uid));
+          }
+        } catch {}
+      }
+    }).catch(() => {});
+
+    dexieDb.getExpenses(user.uid).then((cached) => {
+      if (cached && cached.length > 0) {
+        setExpenses(cached.filter((e) => !e.ownerId || e.ownerId === user.uid));
+      } else {
+        try {
+          const savedExp = localStorage.getItem(getExpensesStorageKey(user.uid));
+          if (savedExp) {
+            const parsed = JSON.parse(savedExp);
+            if (Array.isArray(parsed)) setExpenses(parsed.filter((e: any) => !e.ownerId || e.ownerId === user.uid));
+          }
+        } catch {}
+      }
+    }).catch(() => {});
 
     // 2. Real-time Firestore sync for authenticated user
     const salesPath = `users/${user.uid}/dailySales`;
@@ -784,16 +923,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       query(collection(db, salesPath), orderBy('createdAt', 'desc')),
       (snapshot) => {
         const list: DailySale[] = [];
-        snapshot.forEach((d) => list.push(d.data() as DailySale));
-        setDailySales(list);
-        try {
-          localStorage.setItem(getSalesStorageKey(user.uid), JSON.stringify(list));
-        } catch {}
+        snapshot.forEach((d) => {
+          const item = d.data() as DailySale;
+          if (!item.ownerId || item.ownerId === user.uid) {
+            list.push({ ...item, ownerId: user.uid });
+          }
+        });
+        const remoteSaleIds = new Set(list.map((s) => s.id));
+        setDailySales((prev) => {
+          const pendingLocal = prev.filter((s) => !remoteSaleIds.has(s.id) && (!s.ownerId || s.ownerId === user.uid));
+          const merged = sanitizeSalesRecords([...list, ...pendingLocal]);
+          try {
+            localStorage.setItem(getSalesStorageKey(user.uid), JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
         list.forEach((s) => dexieDb.saveDailySale(s).catch(() => {}));
       },
       () => {
         dexieDb.getDailySales(user.uid).then((cached) => {
-          if (cached && cached.length > 0) setDailySales(cached);
+          if (cached && cached.length > 0) setDailySales(cached.filter((s) => !s.ownerId || s.ownerId === user.uid));
         }).catch(() => {});
       }
     );
@@ -802,16 +951,26 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       query(collection(db, expPath), orderBy('createdAt', 'desc')),
       (snapshot) => {
         const list: Expense[] = [];
-        snapshot.forEach((d) => list.push(d.data() as Expense));
-        setExpenses(list);
-        try {
-          localStorage.setItem(getExpensesStorageKey(user.uid), JSON.stringify(list));
-        } catch {}
+        snapshot.forEach((d) => {
+          const item = d.data() as Expense;
+          if (!item.ownerId || item.ownerId === user.uid) {
+            list.push({ ...item, ownerId: user.uid });
+          }
+        });
+        const remoteExpIds = new Set(list.map((e) => e.id));
+        setExpenses((prev) => {
+          const pendingLocal = prev.filter((e) => !remoteExpIds.has(e.id) && (!e.ownerId || e.ownerId === user.uid));
+          const merged = [...list, ...pendingLocal];
+          try {
+            localStorage.setItem(getExpensesStorageKey(user.uid), JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
         list.forEach((e) => dexieDb.saveExpense(e).catch(() => {}));
       },
       () => {
         dexieDb.getExpenses(user.uid).then((cached) => {
-          if (cached && cached.length > 0) setExpenses(cached);
+          if (cached && cached.length > 0) setExpenses(cached.filter((e) => !e.ownerId || e.ownerId === user.uid));
         }).catch(() => {});
       }
     );
@@ -873,7 +1032,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Safe Firestore write with timeout guard so offline/transient network states never hang the caller
-  const safeFirestoreWrite = async (writeFn: () => Promise<any>, timeoutMs = 800): Promise<void> => {
+  const safeFirestoreWrite = async (writeFn: () => Promise<any>, timeoutMs = 2500): Promise<void> => {
     try {
       // If client is currently offline, fire write directly into Firestore IndexedDB cache without network wait
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -1004,12 +1163,14 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const custTxPath = initTx ? `users/${user.uid}/customers/${custId}/transactions/${initTx.id}` : '';
 
     await safeFirestoreWrite(async () => {
-      await setDoc(doc(db, docPath), newCustomer);
+      const batch = writeBatch(db);
+      batch.set(doc(db, docPath), cleanCustomerForFirestore(newCustomer, user.uid));
       if (initTx && rootTxPath) {
-        await setDoc(doc(db, rootTxPath), initTx);
-        await setDoc(doc(db, custTxPath), initTx).catch(() => {});
+        batch.set(doc(db, rootTxPath), cleanTxForFirestore(initTx, user.uid));
+        batch.set(doc(db, custTxPath), cleanTxForFirestore(initTx, user.uid));
       }
-    });
+      await batch.commit();
+    }, 2500);
 
     return custId;
   };
@@ -1039,21 +1200,20 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const targetCust = customers.find((c) => c.id === id);
     if (targetCust) {
-      dexieSyncManager.writeCustomer({ ...targetCust, ...cleanData }, 'update').catch(() => {});
+      const updatedCust = { ...targetCust, ...cleanData };
+      dexieSyncManager.writeCustomer(updatedCust, 'update').catch(() => {});
+
+      if (user) {
+        const docPath = `users/${user.uid}/customers/${id}`;
+        await safeFirestoreWrite(async () => {
+          await setDoc(doc(db, docPath), cleanCustomerForFirestore(updatedCust, user.uid));
+        }, 2500);
+      }
     }
 
     if (selectedCustomer?.id === id) {
       setSelectedCustomer((prev) => (prev ? { ...prev, ...cleanData } : null));
     }
-
-    if (!user) {
-      return;
-    }
-
-    const docPath = `users/${user.uid}/customers/${id}`;
-    await safeFirestoreWrite(async () => {
-      await updateDoc(doc(db, docPath), cleanData);
-    });
   };
 
   // Add Due to Customer (saves to users/{user.uid}/transactions and updates customer balance)
@@ -1086,10 +1246,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       createdAt: now
     };
 
+    const updatedCustomer: Customer = {
+      ...customer,
+      totalDue: newBalance,
+      updatedAt: now
+    };
+
     // Optimistically update customers in-memory state & storage immediately
     setCustomers((prev) => {
       const updated = prev.map((c) =>
-        c.id === customerId ? { ...c, totalDue: newBalance, updatedAt: now } : c
+        c.id === customerId ? updatedCustomer : c
       );
       try {
         localStorage.setItem(getCustomerStorageKey(user ? user.uid : null), JSON.stringify(updated));
@@ -1110,7 +1276,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Write transaction and updated customer balance to Dexie IndexedDB
     dexieSyncManager.writeTransaction(tx).catch(() => {});
-    dexieSyncManager.writeCustomer({ ...customer, totalDue: newBalance, updatedAt: now }, 'update').catch(() => {});
+    dexieSyncManager.writeCustomer(updatedCustomer, 'update').catch(() => {});
 
     if (selectedCustomer?.id === customerId) {
       setSelectedCustomer((prev) => (prev ? { ...prev, totalDue: newBalance, updatedAt: now } : null));
@@ -1125,13 +1291,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const custTxPath = `users/${user.uid}/customers/${customerId}/transactions/${txId}`;
 
     await safeFirestoreWrite(async () => {
-      await setDoc(doc(db, custDocPath), {
-        totalDue: newBalance,
-        updatedAt: now
-      }, { merge: true });
-      await setDoc(doc(db, rootTxPath), tx);
-      await setDoc(doc(db, custTxPath), tx).catch(() => {});
-    });
+      const batch = writeBatch(db);
+      batch.set(doc(db, custDocPath), cleanCustomerForFirestore(updatedCustomer, user.uid));
+      batch.set(doc(db, rootTxPath), cleanTxForFirestore(tx, user.uid));
+      batch.set(doc(db, custTxPath), cleanTxForFirestore(tx, user.uid));
+      await batch.commit();
+    }, 2500);
   };
 
   // Record Payment
@@ -1164,10 +1329,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       createdAt: now
     };
 
+    const updatedCustomer: Customer = {
+      ...customer,
+      totalDue: newBalance,
+      updatedAt: now
+    };
+
     // Optimistically update customers in-memory state & storage immediately
     setCustomers((prev) => {
       const updated = prev.map((c) =>
-        c.id === customerId ? { ...c, totalDue: newBalance, updatedAt: now } : c
+        c.id === customerId ? updatedCustomer : c
       );
       try {
         localStorage.setItem(getCustomerStorageKey(user ? user.uid : null), JSON.stringify(updated));
@@ -1188,11 +1359,68 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Write transaction and updated customer balance to Dexie IndexedDB
     dexieSyncManager.writeTransaction(tx).catch(() => {});
-    dexieSyncManager.writeCustomer({ ...customer, totalDue: newBalance, updatedAt: now }, 'update').catch(() => {});
+    dexieSyncManager.writeCustomer(updatedCustomer, 'update').catch(() => {});
 
     if (selectedCustomer?.id === customerId) {
       setSelectedCustomer((prev) => (prev ? { ...prev, totalDue: newBalance, updatedAt: now } : null));
     }
+
+    // --- SUCCESSFULLY ADD DUE PAYMENT TO SALES DASHBOARD & TOTAL SALES ---
+    // When a customer makes a due payment, record it as a cash collection / paid sale
+    const today = new Date();
+    const todayLocalIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    let saleDateIso = todayLocalIso;
+    if (customDate) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(customDate)) {
+        saleDateIso = customDate;
+      } else {
+        const parsed = new Date(customDate);
+        if (!isNaN(parsed.getTime())) {
+          saleDateIso = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+        }
+      }
+    }
+
+    const paymentSaleId = `sale_pay_${txId}`;
+    const paymentNote = description?.trim() 
+      ? `বকেয়া আদায়: ${customer.name} (${description.trim()})`
+      : `বকেয়া আদায় (Due payment: ${customer.name})`;
+
+    const newPaymentSale: DailySale = {
+      id: paymentSaleId,
+      amount: amount,
+      total: amount,
+      note: paymentNote,
+      date: saleDateIso,
+      ownerId: user ? user.uid : 'demo_user',
+      createdAt: now,
+      type: 'PAID_SALE',
+      customerId,
+      customerName: customer.name,
+      isDue: false,
+      paidAmount: amount,
+      dueAmount: 0,
+      itemNote: paymentNote,
+      medicineDetails: `Due payment received from ${customer.name}`,
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        serialNumber: customer.serialNumber
+      },
+      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+    };
+
+    setDailySales((prev) => {
+      const updated = sanitizeSalesRecords([newPaymentSale, ...prev.filter((s) => s.id !== paymentSaleId)]);
+      try {
+        localStorage.setItem(getSalesStorageKey(user ? user.uid : null), JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    dexieDb.saveDailySale(newPaymentSale).catch(() => {});
+    dexieSyncManager.writeDailySale(newPaymentSale).catch(() => {});
 
     if (!user) {
       return;
@@ -1201,15 +1429,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const custDocPath = `users/${user.uid}/customers/${customerId}`;
     const rootTxPath = `users/${user.uid}/transactions/${txId}`;
     const custTxPath = `users/${user.uid}/customers/${customerId}/transactions/${txId}`;
+    const saleDocPath = `users/${user.uid}/dailySales/${paymentSaleId}`;
 
     await safeFirestoreWrite(async () => {
-      await setDoc(doc(db, custDocPath), {
-        totalDue: newBalance,
-        updatedAt: now
-      }, { merge: true });
-      await setDoc(doc(db, rootTxPath), tx);
-      await setDoc(doc(db, custTxPath), tx).catch(() => {});
-    });
+      const batch = writeBatch(db);
+      batch.set(doc(db, custDocPath), cleanCustomerForFirestore(updatedCustomer, user.uid));
+      batch.set(doc(db, rootTxPath), cleanTxForFirestore(tx, user.uid));
+      batch.set(doc(db, custTxPath), cleanTxForFirestore(tx, user.uid));
+      batch.set(doc(db, saleDocPath), cleanDailySaleForFirestore(newPaymentSale, user.uid));
+      await batch.commit();
+    }, 2500);
   };
 
   // Adjust Balance
@@ -1237,10 +1466,16 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       createdAt: now
     };
 
+    const updatedCustomer: Customer = {
+      ...customer,
+      totalDue: cleanNewBalance,
+      updatedAt: now
+    };
+
     // Optimistically update customers in-memory state & storage immediately
     setCustomers((prev) => {
       const updated = prev.map((c) =>
-        c.id === customerId ? { ...c, totalDue: cleanNewBalance, updatedAt: now } : c
+        c.id === customerId ? updatedCustomer : c
       );
       try {
         localStorage.setItem(getCustomerStorageKey(user ? user.uid : null), JSON.stringify(updated));
@@ -1261,7 +1496,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Write adjustment transaction and updated customer balance to Dexie IndexedDB
     dexieSyncManager.writeTransaction(tx).catch(() => {});
-    dexieSyncManager.writeCustomer({ ...customer, totalDue: cleanNewBalance, updatedAt: now }, 'update').catch(() => {});
+    dexieSyncManager.writeCustomer(updatedCustomer, 'update').catch(() => {});
 
     if (selectedCustomer?.id === customerId) {
       setSelectedCustomer((prev) => (prev ? { ...prev, totalDue: cleanNewBalance, updatedAt: now } : null));
@@ -1276,13 +1511,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const custTxPath = `users/${user.uid}/customers/${customerId}/transactions/${txId}`;
 
     await safeFirestoreWrite(async () => {
-      await setDoc(doc(db, custDocPath), {
-        totalDue: cleanNewBalance,
-        updatedAt: now
-      }, { merge: true });
-      await setDoc(doc(db, rootTxPath), tx);
-      await setDoc(doc(db, custTxPath), tx).catch(() => {});
-    });
+      const batch = writeBatch(db);
+      batch.set(doc(db, custDocPath), cleanCustomerForFirestore(updatedCustomer, user.uid));
+      batch.set(doc(db, rootTxPath), cleanTxForFirestore(tx, user.uid));
+      batch.set(doc(db, custTxPath), cleanTxForFirestore(tx, user.uid));
+      await batch.commit();
+    }, 2500);
   };
 
   // Delete Customer Record permanently
@@ -1328,30 +1562,52 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Delete customer doc
       batch.delete(doc(db, custDocPath));
       await batch.commit();
-    });
+    }, 2500);
   };
 
   // Daily Sales & Expenses handlers
-  const addDailySale = async (amount: number, note?: string, customDate?: string) => {
-    if (amount <= 0) return;
+  const addDailySale = async (
+    amount: number, 
+    note?: string, 
+    customDate?: string,
+    extra?: { type?: 'CASH' | 'DUE' | 'PAID_SALE' | 'DUE_SALE'; customerId?: string; customerName?: string; items?: any[]; total?: number; id?: string; isDue?: boolean; dueAmount?: number; paidAmount?: number; medicineDetails?: string; itemNote?: string; customer?: any; time?: string }
+  ) => {
+    const rawVal = (typeof amount === 'number' && !isNaN(amount) && amount > 0)
+      ? amount
+      : (extra?.total !== undefined && Number(extra.total) > 0 ? extra.total : amount);
+    const finalAmount = typeof rawVal === 'number'
+      ? (isNaN(rawVal) ? 0 : rawVal)
+      : (parseFloat(String(rawVal).replace(/[^0-9.]/g, '')) || 0);
+
+    if (finalAmount <= 0) return;
     const now = new Date().toISOString();
-    const todayFormatted = new Date().toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
-    const saleId = `sale_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const today = new Date();
+    const todayLocalIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const saleId = extra?.id || `sale_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const saleType = extra?.type || (extra?.customerId ? 'DUE_SALE' : 'PAID_SALE');
+    const isDueVal = extra?.isDue !== undefined ? extra.isDue : (saleType === 'DUE' || saleType === 'DUE_SALE');
     const newSale: DailySale = {
       id: saleId,
-      amount,
-      note: note?.trim() || 'সাধারণ ক্যাশ বিক্রি (Daily Cash Sale)',
-      date: customDate || todayFormatted,
+      amount: finalAmount,
+      total: finalAmount,
+      note: note?.trim() || (saleType === 'DUE' || saleType === 'DUE_SALE' ? 'ফার্মেসি বাকী বিক্রি (Due Sale)' : 'সাধারণ ক্যাশ বিক্রি (Direct Paid Sale)'),
+      date: customDate || todayLocalIso,
       ownerId: user ? user.uid : 'demo_user',
-      createdAt: now
+      createdAt: now,
+      type: saleType,
+      customerId: extra?.customerId,
+      customerName: extra?.customerName,
+      items: extra?.items,
+      isDue: isDueVal,
+      dueAmount: extra?.dueAmount !== undefined ? extra.dueAmount : (isDueVal ? finalAmount : 0),
+      medicineDetails: extra?.medicineDetails,
+      itemNote: extra?.itemNote,
+      customer: extra?.customer,
+      time: extra?.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setDailySales((prev) => {
-      const updated = [newSale, ...prev.filter((s) => s.id !== saleId)];
+      const updated = sanitizeSalesRecords([newSale, ...prev.filter((s) => s.id !== saleId)]);
       try {
         localStorage.setItem(getSalesStorageKey(user ? user.uid : null), JSON.stringify(updated));
       } catch {}
@@ -1359,11 +1615,12 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     await dexieDb.saveDailySale(newSale);
+    dexieSyncManager.writeDailySale(newSale).catch(() => {});
 
     if (user) {
       safeFirestoreWrite(async () => {
-        await setDoc(doc(db, `users/${user.uid}/dailySales/${saleId}`), newSale);
-      }).catch((e) => console.warn('Firestore daily sale write warning:', e));
+        await setDoc(doc(db, `users/${user.uid}/dailySales/${saleId}`), cleanDailySaleForFirestore(newSale, user.uid));
+      }, 2500).catch((e) => console.warn('Firestore daily sale write warning:', e));
     }
   };
 
@@ -1376,21 +1633,19 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return updated;
     });
     await dexieDb.deleteDailySale(id);
+    dexieSyncManager.deleteDailySale(id).catch(() => {});
     if (user) {
       safeFirestoreWrite(async () => {
         await deleteDoc(doc(db, `users/${user.uid}/dailySales/${id}`));
-      }).catch(() => {});
+      }, 2500).catch(() => {});
     }
   };
 
   const addExpense = async (category: string, amount: number, note?: string, customDate?: string) => {
     if (amount <= 0) return;
     const now = new Date().toISOString();
-    const todayFormatted = new Date().toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
+    const today = new Date();
+    const todayLocalIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const expId = `exp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const newExpense: Expense = {
       id: expId,
@@ -1398,7 +1653,7 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       title: note?.trim() || category,
       amount,
       note: note?.trim() || '',
-      date: customDate || todayFormatted,
+      date: customDate || todayLocalIso,
       ownerId: user ? user.uid : 'demo_user',
       createdAt: now
     };
@@ -1440,22 +1695,74 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const { todaySalesAmount, todayExpensesAmount, totalSalesAmount, totalExpensesAmount } = useMemo(() => {
     const todayStr = new Date().toLocaleDateString('en-GB');
     const todayIsoPrefix = new Date().toISOString().split('T')[0];
+    const todayFormatted = new Date().toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+
+    const isToday = (item: { date?: string; createdAt?: string }) => {
+      if (item.date) {
+        if (item.date === todayIsoPrefix || item.date.startsWith(todayIsoPrefix)) return true;
+        if (item.date.includes(todayStr) || item.date.includes(todayFormatted)) return true;
+        const ddmmyyyy = item.date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (ddmmyyyy) {
+          const iso = `${ddmmyyyy[3]}-${ddmmyyyy[2].padStart(2, '0')}-${ddmmyyyy[1].padStart(2, '0')}`;
+          if (iso === todayIsoPrefix) return true;
+        }
+        const parsed = new Date(item.date);
+        if (!isNaN(parsed.getTime()) && parsed.toISOString().split('T')[0] === todayIsoPrefix) {
+          return true;
+        }
+        return false;
+      }
+      if (item.createdAt && item.createdAt.substring(0, 10) === todayIsoPrefix) return true;
+      return false;
+    };
 
     let todaySales = 0;
     let totalSales = 0;
+    let todayCash = 0;
+    let totalCash = 0;
+    let todayDue = 0;
+    let totalDue = 0;
+
     dailySales.forEach((s) => {
-      totalSales += s.amount;
-      if (s.date.includes(todayStr) || s.createdAt.startsWith(todayIsoPrefix)) {
-        todaySales += s.amount;
+      const amt = s.amount || s.total || 0;
+      const isDue = (s.type === 'DUE' || s.type === 'DUE_SALE' || Boolean(s.customerId && s.type !== 'PAID_SALE' && s.type !== 'CASH' && s.type !== 'Paid Sale')) && s.isDue !== false && (s.dueAmount === undefined || Number(s.dueAmount) > 0);
+
+      if (isDue) {
+        // Save to customer ledger due, DO NOT add to immediate cash sales balance
+        totalDue += amt;
+        if (isToday(s)) {
+          todayDue += amt;
+        }
+      } else {
+        // Case 1: Direct Sale & Due Payments (PAID_SALE) -> Add to immediate cash sales balance
+        totalSales += amt;
+        totalCash += amt;
+        if (isToday(s)) {
+          todaySales += amt;
+          todayCash += amt;
+        }
       }
     });
+
+    try {
+      const uid = user ? user.uid : null;
+      localStorage.setItem(getMetricsStorageKey(uid, 'totalSales'), (totalSales + totalDue).toString());
+      localStorage.setItem(getMetricsStorageKey(uid, 'cashSales'), totalCash.toString());
+      localStorage.setItem(getMetricsStorageKey(uid, 'dueSales'), totalDue.toString());
+    } catch {
+      // ignore
+    }
 
     let todayExp = 0;
     let totalExp = 0;
     expenses.forEach((e) => {
-      totalExp += e.amount;
-      if (e.date.includes(todayStr) || e.createdAt.startsWith(todayIsoPrefix)) {
-        todayExp += e.amount;
+      totalExp += (e.amount || 0);
+      if (isToday(e)) {
+        todayExp += (e.amount || 0);
       }
     });
 
@@ -1489,9 +1796,11 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let todayCollections = 0;
     let todayDuesAdded = 0;
 
-    const txSource = user ? allUserTransactions : (selectedCustomer ? customerTransactions : []);
+    const txSource = allTransactions;
     txSource.forEach((tx) => {
-      if (tx.date.includes(todayStr) || tx.createdAt.startsWith(todayIsoPrefix)) {
+      const isTxToday = (tx.date && (tx.date.includes(todayStr) || tx.date.startsWith(todayIsoPrefix))) || 
+                        (tx.createdAt && tx.createdAt.startsWith(todayIsoPrefix));
+      if (isTxToday) {
         if (tx.type === 'payment') todayCollections += tx.amount;
         if (tx.type === 'due') todayDuesAdded += tx.amount;
       }
@@ -1511,45 +1820,66 @@ export const LedgerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [customers, allUserTransactions, customerTransactions, user, selectedCustomer, todaySalesAmount, todayExpensesAmount, totalSalesAmount, totalExpensesAmount]);
 
+  // Memoize context value object so consumers don't re-render on unrelated state ticks
+  const contextValue = useMemo(() => ({
+    customers,
+    loading,
+    isCloudSynced,
+    stats,
+    selectedCustomer,
+    setSelectedCustomer,
+    customerTransactions,
+    allTransactions,
+    loadingTransactions,
+    userStoreProfile: pharmacyProfile,
+    updateUserStoreProfile: updatePharmacyProfile,
+    pharmacyProfile,
+    updatePharmacyProfile,
+    addCustomer,
+    updateCustomer,
+    addDueTransaction,
+    recordPayment,
+    adjustBalance,
+    deleteCustomer,
+    reloadTransactions,
+    dailySales,
+    expenses,
+    addDailySale,
+    deleteDailySale,
+    addExpense,
+    deleteExpense,
+    todaySalesAmount,
+    todayExpensesAmount,
+    totalSalesAmount,
+    totalExpensesAmount,
+    syncStats,
+    triggerManualSync,
+    pullLatestFromCloud,
+    dexieStorageStats
+  }), [
+    customers,
+    loading,
+    isCloudSynced,
+    stats,
+    selectedCustomer,
+    customerTransactions,
+    allTransactions,
+    loadingTransactions,
+    pharmacyProfile,
+    dailySales,
+    expenses,
+    todaySalesAmount,
+    todayExpensesAmount,
+    totalSalesAmount,
+    totalExpensesAmount,
+    syncStats,
+    dexieStorageStats,
+    triggerManualSync,
+    pullLatestFromCloud
+  ]);
+
   return (
-    <LedgerContext.Provider
-      value={{
-        customers,
-        loading,
-        isCloudSynced,
-        stats,
-        selectedCustomer,
-        setSelectedCustomer,
-        customerTransactions,
-        allTransactions,
-        loadingTransactions,
-        userStoreProfile: pharmacyProfile,
-        updateUserStoreProfile: updatePharmacyProfile,
-        pharmacyProfile,
-        updatePharmacyProfile,
-        addCustomer,
-        updateCustomer,
-        addDueTransaction,
-        recordPayment,
-        adjustBalance,
-        deleteCustomer,
-        reloadTransactions,
-        dailySales,
-        expenses,
-        addDailySale,
-        deleteDailySale,
-        addExpense,
-        deleteExpense,
-        todaySalesAmount,
-        todayExpensesAmount,
-        totalSalesAmount,
-        totalExpensesAmount,
-        syncStats,
-        triggerManualSync,
-        pullLatestFromCloud,
-        dexieStorageStats
-      }}
-    >
+    <LedgerContext.Provider value={contextValue}>
       {children}
     </LedgerContext.Provider>
   );

@@ -16,10 +16,11 @@ import {
   type DexieCustomer, 
   type DexieTransaction, 
   type DexiePharmacyProfile, 
+  type DexieDailySale,
   type SyncQueueItem,
   type SyncStatus
 } from './dexieDb';
-import type { Customer, Transaction, PharmacyProfile } from '../types/ledger';
+import type { Customer, Transaction, PharmacyProfile, DailySale } from '../types/ledger';
 
 export type SyncState = 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
 
@@ -331,6 +332,70 @@ class DexieFirestoreSyncManager {
     }
   }
 
+  /**
+   * Write daily sale to local Dexie cache and enqueue to syncQueue if authenticated
+   */
+  async writeDailySale(sale: DailySale): Promise<void> {
+    const now = Date.now();
+    const isSynced = !this.activeUser;
+    const status: SyncStatus = isSynced ? 'synced' : 'pending_create';
+
+    await dexieDb.dailySales.put({
+      ...sale,
+      _syncStatus: status,
+      _lastModified: now
+    });
+
+    if (this.activeUser) {
+      const { _syncStatus, _lastModified, ...cleanPayload } = sale as any;
+      await dexieDb.syncQueue.add({
+        entity: 'dailySale',
+        operation: 'create',
+        documentId: sale.id,
+        ownerId: this.activeUser.uid,
+        path: `users/${this.activeUser.uid}/dailySales/${sale.id}`,
+        payload: cleanPayload,
+        timestamp: now,
+        status: 'pending',
+        retryCount: 0
+      });
+
+      await this.updatePendingCount(this.activeUser.uid);
+
+      if (navigator.onLine) {
+        this.processSyncQueue(this.activeUser).catch(() => {});
+      }
+    }
+  }
+
+  /**
+   * Delete daily sale locally and enqueue delete to Firestore
+   */
+  async deleteDailySale(saleId: string): Promise<void> {
+    const now = Date.now();
+    await dexieDb.dailySales.delete(saleId);
+
+    if (this.activeUser) {
+      await dexieDb.syncQueue.add({
+        entity: 'dailySale',
+        operation: 'delete',
+        documentId: saleId,
+        ownerId: this.activeUser.uid,
+        path: `users/${this.activeUser.uid}/dailySales/${saleId}`,
+        payload: null,
+        timestamp: now,
+        status: 'pending',
+        retryCount: 0
+      });
+
+      await this.updatePendingCount(this.activeUser.uid);
+
+      if (navigator.onLine) {
+        this.processSyncQueue(this.activeUser).catch(() => {});
+      }
+    }
+  }
+
   /* =====================================================================
      REHYDRATION / INBOUND SYNC FROM FIRESTORE TO DEXIE
      ===================================================================== */
@@ -367,15 +432,17 @@ class DexieFirestoreSyncManager {
         await dexieDb.customers.bulkPut(itemsToPut);
       }
 
-      // Check for records deleted in the remote cloud (only delete if locally synced)
-      const toDeleteIds: string[] = [];
-      for (const local of existing) {
-        if (!remoteMap.has(local.id) && local._syncStatus === 'synced') {
-          toDeleteIds.push(local.id);
+      // Check for records deleted in the remote cloud ONLY when remote returned verified records
+      if (remoteCustomers.length > 0) {
+        const toDeleteIds: string[] = [];
+        for (const local of existing) {
+          if (!remoteMap.has(local.id) && local._syncStatus === 'synced') {
+            toDeleteIds.push(local.id);
+          }
         }
-      }
-      if (toDeleteIds.length > 0) {
-        await dexieDb.customers.bulkDelete(toDeleteIds);
+        if (toDeleteIds.length > 0) {
+          await dexieDb.customers.bulkDelete(toDeleteIds);
+        }
       }
     });
 
@@ -411,14 +478,50 @@ class DexieFirestoreSyncManager {
         await dexieDb.transactions.bulkPut(itemsToPut);
       }
 
-      const toDeleteIds: string[] = [];
-      for (const local of existing) {
-        if (!remoteMap.has(local.id) && local._syncStatus === 'synced') {
-          toDeleteIds.push(local.id);
+      // Only delete if remote returned non-empty confirmed records
+      if (remoteTxs.length > 0) {
+        const toDeleteIds: string[] = [];
+        for (const local of existing) {
+          if (!remoteMap.has(local.id) && local._syncStatus === 'synced') {
+            toDeleteIds.push(local.id);
+          }
+        }
+        if (toDeleteIds.length > 0) {
+          await dexieDb.transactions.bulkDelete(toDeleteIds);
         }
       }
-      if (toDeleteIds.length > 0) {
-        await dexieDb.transactions.bulkDelete(toDeleteIds);
+    });
+
+    await this.updatePendingCount(ownerId);
+  }
+
+  /**
+   * Rehydrate daily sales from remote Firestore into Dexie cache
+   */
+  async rehydrateDailySales(ownerId: string, remoteSales: DailySale[]): Promise<void> {
+    const remoteMap = new Map<string, DailySale>();
+    remoteSales.forEach((s) => remoteMap.set(s.id, s));
+
+    await dexieDb.transaction('rw', [dexieDb.dailySales], async () => {
+      const existing = await dexieDb.dailySales.where('ownerId').equals(ownerId).toArray();
+      const existingMap = new Map(existing.map((s) => [s.id, s]));
+
+      const itemsToPut: DexieDailySale[] = [];
+
+      for (const remote of remoteSales) {
+        const local = existingMap.get(remote.id);
+        if (local && local._syncStatus && local._syncStatus !== 'synced') {
+          continue;
+        }
+        itemsToPut.push({
+          ...remote,
+          _syncStatus: 'synced',
+          _lastModified: Date.now()
+        });
+      }
+
+      if (itemsToPut.length > 0) {
+        await dexieDb.dailySales.bulkPut(itemsToPut);
       }
     });
 
@@ -488,13 +591,14 @@ class DexieFirestoreSyncManager {
           // Execute corresponding Firestore operation
           if (item.operation === 'create' || item.operation === 'update') {
             const docRef = doc(db, item.path);
-            await setDoc(docRef, item.payload, { merge: true });
+            const { _syncStatus, _lastModified, ...cleanPayload } = (item.payload && typeof item.payload === 'object') ? item.payload : {};
+            await setDoc(docRef, cleanPayload, { merge: true });
 
             // If it's a customer creation with initial due or a customer transaction, also mirror if needed
-            if (item.entity === 'transaction' && item.payload?.customerId) {
-              const custTxPath = `users/${user.uid}/customers/${item.payload.customerId}/transactions/${item.documentId}`;
+            if (item.entity === 'transaction' && cleanPayload?.customerId) {
+              const custTxPath = `users/${user.uid}/customers/${cleanPayload.customerId}/transactions/${item.documentId}`;
               try {
-                await setDoc(doc(db, custTxPath), item.payload, { merge: true });
+                await setDoc(doc(db, custTxPath), cleanPayload, { merge: true });
               } catch {
                 // Secondary mirror write failure is non-fatal
               }
@@ -507,6 +611,8 @@ class DexieFirestoreSyncManager {
               await dexieDb.transactions.update(item.documentId, { _syncStatus: 'synced' });
             } else if (item.entity === 'profile') {
               await dexieDb.pharmacyProfiles.update(item.documentId, { _syncStatus: 'synced' });
+            } else if (item.entity === 'dailySale') {
+              await dexieDb.dailySales.update(item.documentId, { _syncStatus: 'synced' });
             }
           } else if (item.operation === 'delete') {
             const docRef = doc(db, item.path);
@@ -554,6 +660,28 @@ class DexieFirestoreSyncManager {
       if (remainingCount === 0) {
         this.syncStats.state = 'synced';
         this.syncStats.lastSyncedAt = new Date();
+
+        // Broadcast sync success event for UI indicator & Service Worker
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('sw-sync-success', {
+            detail: { 
+              timestamp: Date.now(), 
+              count: pendingItems.length,
+              source: 'dexie-cloud-sync'
+            }
+          }));
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            try {
+              navigator.serviceWorker.controller.postMessage({
+                type: 'DATA_PUSHED',
+                timestamp: Date.now(),
+                count: pendingItems.length
+              });
+            } catch {
+              // Ignore if controller is busy
+            }
+          }
+        }
       } else {
         this.syncStats.state = 'idle';
       }

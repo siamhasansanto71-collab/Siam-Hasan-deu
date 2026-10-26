@@ -17,7 +17,7 @@ interface SalesExpenseCardsProps {
   activeTab?: 'sales' | 'expenses';
 }
 
-export const SalesExpenseCards: React.FC<SalesExpenseCardsProps> = ({
+const SalesExpenseCardsComponent: React.FC<SalesExpenseCardsProps> = ({
   onOpenSales,
   onOpenExpenses,
   activeTab,
@@ -95,17 +95,16 @@ export const SalesExpenseCards: React.FC<SalesExpenseCardsProps> = ({
             {/* 2. Text Content on RIGHT next to the icon */}
             <div className="min-w-0">
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider truncate">
-                {t.totalSalesCardTitle || "TOTAL SALES"}
+                {t.totalSalesCardTitle || "SALE"}
               </p>
               <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-baseline gap-1">
                 <span className="text-emerald-400 text-sm font-extrabold">৳</span>
-                <span className="tabular-nums font-mono">
+                <span id="dashSales" className="tabular-nums font-mono text-[#00e676]">
                   {displaySales.toLocaleString('en-US')}
                 </span>
               </h3>
               <p className="text-[10px] text-emerald-400/90 font-medium flex items-center gap-1 mt-0.5 truncate">
-                <TrendingUp className="w-3 h-3 text-[#00e676] flex-shrink-0" />
-                <span>{period === 'today' ? (t.todaysCashSales || "Today's Sale") : (t.allTimeTotalSales || "All Time")}</span>
+                <span>{period === 'today' ? (language === 'bn' ? "আজকের নগদ বিক্রি" : "Today's Cash Sale") : (t.allTimeTotalSales || "All Time")}</span>
               </p>
             </div>
           </div>
@@ -144,17 +143,17 @@ export const SalesExpenseCards: React.FC<SalesExpenseCardsProps> = ({
             {/* 2. Text Content on RIGHT next to the icon */}
             <div className="min-w-0">
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider truncate">
-                {t.totalExpensesCardTitle || "TOTAL EXPENSES"}
+                {t.totalExpensesCardTitle || "EXPENSES"}
               </p>
               <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-baseline gap-1">
                 <span className="text-rose-400 text-sm font-extrabold">৳</span>
-                <span className="tabular-nums font-mono">
+                <span id="dashExpenses" className="tabular-nums font-mono text-[#ff5252]">
                   {displayExpenses.toLocaleString('en-US')}
                 </span>
               </h3>
               <p className="text-[10px] text-rose-400/90 font-medium flex items-center gap-1 mt-0.5 truncate">
                 <Calendar className="w-3 h-3 text-[#ff5252] flex-shrink-0" />
-                <span>{period === 'today' ? (t.todaysExpenses || "Today's Expense") : (t.allTimeTotalExpenses || "All Time")}</span>
+                <span>{period === 'today' ? (language === 'bn' ? "আজকের খরচ" : "Range Total") : (t.allTimeTotalExpenses || "All Time")}</span>
               </p>
             </div>
           </div>
@@ -175,3 +174,5 @@ export const SalesExpenseCards: React.FC<SalesExpenseCardsProps> = ({
     </div>
   );
 };
+
+export const SalesExpenseCards = React.memo(SalesExpenseCardsComponent);

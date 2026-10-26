@@ -3,20 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Siam Pharma Due Management </title>
-    <meta name="description" content="Siam Pharma Due Management - কাস্টমার বাকি ও দেনা-পাওনা হিসাব খাতা (Customer Due & Credit Ledger Management)" />
+    <title>S S Pharma - Customer Due & Credit Ledger</title>
+    <meta name="description" content="Modern, secure customer dues and credit ledger management system for S S Pharma (এস এস ফার্মা) with real-time cloud sync, transaction tracking, and payment history." />
     
     <!-- Open Graph / Social Sharing Previews (Facebook, WhatsApp, Messenger) -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Siam Pharma Due Management " />
-    <meta property="og:description" content="Siam Pharma Due Management - কাস্টমার বাকি ও দেনা-পাওনা হিসাব খাতা" />
-    <meta property="og:image" content="/icons/icon-512x512.png?v=2" />
+    <meta property="og:title" content="S S Pharma - Customer Due & Credit Ledger" />
+    <meta property="og:description" content="Modern, secure customer dues and credit ledger management system for S S Pharma (এস এস ফার্মা) with real-time cloud sync, transaction tracking, and payment history." />
+    <meta property="og:image" content="/icons/icon-512x512.png" />
     
     <!-- Twitter Preview -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Siam Pharma Due Management " />
-    <meta name="twitter:description" content="Siam Pharma Due Management - কাস্টমার বাকি ও দেনা-পাওনা হিসাব খাতা" />
-    <meta name="twitter:image" content="/icons/icon-512x512.png?v=2" />
+    <meta name="twitter:title" content="S S Pharma - Customer Due & Credit Ledger" />
+    <meta name="twitter:description" content="Modern, secure customer dues and credit ledger management system for S S Pharma (এস এস ফার্মা) with real-time cloud sync, transaction tracking, and payment history." />
+    <meta name="twitter:image" content="/icons/icon-512x512.png" />
 
     <!-- Theme & UI Colors matching dark green background #042014 -->
     <meta name="theme-color" content="#042014" />
@@ -49,16 +49,46 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // Prevent service worker update failures from causing unhandled rejection errors
+      window.addEventListener('unhandledrejection', (event) => {
+        if (event && event.reason && (
+          String(event.reason).includes('ServiceWorker') ||
+          String(event.reason).includes('sw.js')
+        )) {
+          console.warn('Silenced ServiceWorker update rejection:', event.reason);
+          event.preventDefault();
+        }
+      });
+
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js?v=2', { scope: '/' })
-            .then((reg) => {
-              console.log('PWA Service Worker registered with scope:', reg.scope);
-              reg.update();
-            })
-            .catch((err) => {
-              console.warn('PWA Service Worker registration failed:', err);
-            });
+          try {
+            // Unregister any stale or query-parameterized service workers
+            if (navigator.serviceWorker.getRegistrations) {
+              navigator.serviceWorker.getRegistrations().then((registrations) => {
+                for (const reg of registrations) {
+                  const url = reg.active?.scriptURL || reg.waiting?.scriptURL || reg.installing?.scriptURL || '';
+                  if (url.includes('?v=') || url.includes('/sw.js?')) {
+                    reg.unregister().catch(() => {});
+                  }
+                }
+              }).catch(() => {});
+            }
+
+            // Register standard canonical /sw.js with safe promise handling
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+              .then((reg) => {
+                console.log('PWA Service Worker registered with scope:', reg.scope);
+                if (reg && typeof reg.update === 'function') {
+                  reg.update().catch(() => {});
+                }
+              })
+              .catch((err) => {
+                console.warn('PWA Service Worker registration notice:', err);
+              });
+          } catch (err) {
+            console.warn('ServiceWorker initialization skipped:', err);
+          }
         });
       }
     </script>

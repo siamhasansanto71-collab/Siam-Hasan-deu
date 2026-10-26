@@ -193,7 +193,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       localStorage.removeItem('siam_pharma_demo');
       localStorage.removeItem('siam_pharma_active_session');
+      localStorage.removeItem('ss_pharma_customers_demo');
+      localStorage.removeItem('ss_pharma_all_tx_demo');
+      localStorage.removeItem('ss_pharma_profile_demo');
+      localStorage.removeItem('ss_pharma_sales_demo');
+      localStorage.removeItem('ss_pharma_expenses_demo');
+      localStorage.removeItem('ss_pharma_sales');
+      localStorage.removeItem('ss_pharma_sales_records');
+      localStorage.removeItem('totalSales');
+      localStorage.removeItem('cashSales');
+      localStorage.removeItem('dueSales');
+      localStorage.removeItem('pharmacyInventory');
       sessionStorage.clear();
+      import('../lib/dexieDb').then(({ dexieDb }) => {
+        dexieDb.clearDemoData().catch(() => {});
+      }).catch(() => {});
     } catch {
       // Storage clearance best-effort
     }

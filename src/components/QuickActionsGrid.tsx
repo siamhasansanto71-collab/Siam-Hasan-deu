@@ -18,7 +18,7 @@ interface QuickActionsGridProps {
   onHelpSupport: () => void;
 }
 
-export const QuickActionsGrid: React.FC<QuickActionsGridProps> = ({
+const QuickActionsGridComponent: React.FC<QuickActionsGridProps> = ({
   onAddCustomer,
   onNewSale,
   onDueList,
@@ -43,8 +43,8 @@ export const QuickActionsGrid: React.FC<QuickActionsGridProps> = ({
     },
     {
       id: 'new_sale',
-      label: 'New Sale',
-      labelBn: 'নতুন বিক্রি/বাকি',
+      label: 'Sale',
+      labelBn: 'বিক্রি / বাকি',
       icon: ShoppingBag,
       color: '#00e5ff',
       badgeBg: 'bg-cyan-500/15',
@@ -172,3 +172,5 @@ export const QuickActionsGrid: React.FC<QuickActionsGridProps> = ({
     </section>
   );
 };
+
+export const QuickActionsGrid = React.memo(QuickActionsGridComponent);

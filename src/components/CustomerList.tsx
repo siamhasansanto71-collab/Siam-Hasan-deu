@@ -89,7 +89,7 @@ const toStandardDateStr = (raw: string): string => {
   return val;
 };
 
-export const CustomerList: React.FC<CustomerListProps> = ({
+const CustomerListComponent: React.FC<CustomerListProps> = ({
   onOpenLedger,
   onQuickPay,
   onQuickDue,
@@ -100,6 +100,16 @@ export const CustomerList: React.FC<CustomerListProps> = ({
   const { customers, loading, allTransactions } = useLedger();
   const { t, language } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+
+  // 150ms debounce for rapid responsive typing without UI stutter
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   const [activeFilter, setActiveFilter] = useState<FilterType>(initialFilter);
   const [forceShowEmptyState, setForceShowEmptyState] = useState(false);
 
@@ -185,8 +195,8 @@ export const CustomerList: React.FC<CustomerListProps> = ({
       });
     }
 
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase().trim();
+    if (debouncedSearchTerm.trim()) {
+      const q = debouncedSearchTerm.toLowerCase().trim();
       txs = txs.filter((tx) => {
         const cust = customerMap.get(tx.customerId);
         const nameMatch = cust?.name.toLowerCase().includes(q);
@@ -197,7 +207,7 @@ export const CustomerList: React.FC<CustomerListProps> = ({
     }
 
     return txs;
-  }, [allTransactions, startDate, endDate, searchTerm, customerMap]);
+  }, [allTransactions, startDate, endDate, debouncedSearchTerm, customerMap]);
 
   // Transaction period summary stats
   const dateRangeStats = useMemo(() => {
@@ -238,8 +248,8 @@ export const CustomerList: React.FC<CustomerListProps> = ({
       result = result.filter((c) => c.totalDue >= 1000);
     }
 
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase().trim();
+    if (debouncedSearchTerm.trim()) {
+      const q = debouncedSearchTerm.toLowerCase().trim();
       result = result.filter(
         (c) =>
           c.name.toLowerCase().includes(q) ||
@@ -249,11 +259,11 @@ export const CustomerList: React.FC<CustomerListProps> = ({
     }
 
     return result;
-  }, [customers, activeFilter, searchTerm, activeCustomerIdsInRange]);
+  }, [customers, activeFilter, debouncedSearchTerm, activeCustomerIdsInRange]);
 
-  const hasDueCount = customers.filter((c) => c.totalDue > 0).length;
-  const clearedCount = customers.filter((c) => c.totalDue === 0).length;
-  const highDueCount = customers.filter((c) => c.totalDue >= 1000).length;
+  const hasDueCount = useMemo(() => customers.filter((c) => c.totalDue > 0).length, [customers]);
+  const clearedCount = useMemo(() => customers.filter((c) => c.totalDue === 0).length, [customers]);
+  const highDueCount = useMemo(() => customers.filter((c) => c.totalDue >= 1000).length, [customers]);
 
   return (
     <div className="space-y-3.5">
@@ -1028,3 +1038,5 @@ export const CustomerList: React.FC<CustomerListProps> = ({
     </div>
   );
 };
+
+export const CustomerList = React.memo(CustomerListComponent);

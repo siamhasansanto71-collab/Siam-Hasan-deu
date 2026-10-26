@@ -33,6 +33,18 @@ export interface DailySale {
   date: string; // ISO string or formatted date
   ownerId: string;
   createdAt: string; // ISO timestamp
+  type?: 'CASH' | 'DUE' | 'PAID_SALE' | 'DUE_SALE';
+  customerId?: string;
+  customerName?: string;
+  items?: any[];
+  total?: number;
+  isDue?: boolean;
+  dueAmount?: number;
+  paidAmount?: number;
+  medicineDetails?: string;
+  itemNote?: string;
+  customer?: any;
+  time?: string;
 }
 
 export interface Expense {

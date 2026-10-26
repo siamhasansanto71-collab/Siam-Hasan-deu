@@ -10,14 +10,13 @@ import {
   ExternalLink,
   MessageCircle,
   Phone,
-  Settings,
-  Database,
-  RefreshCw
+  Settings
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useLedger } from '../context/LedgerContext';
 import { GlossySLogo } from './GlossySLogo';
+import { SyncStatusIndicator } from './SyncStatusIndicator';
 
 interface HeaderProps {
   onOpenAuthModal: () => void;
@@ -35,7 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
   onGoHome
 }) => {
   const { user } = useAuth();
-  const { language, toggleLanguage, t } = useLanguage();
+  const { language, setLanguage, toggleLanguage, t } = useLanguage();
   const { userStoreProfile, setSelectedCustomer, stats, syncStats } = useLedger();
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -87,35 +86,8 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Action Controls: Dexie Sync, Notification Bell, Language Toggle, Store/About Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
           
-          {/* Dexie.js IndexedDB & Cloud Sync Quick Status */}
-          <button
-            onClick={onOpenSettings || onOpenProfileModal}
-            className={`relative flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl border transition-all active:scale-95 shadow-sm ${
-              syncStats.state === 'syncing'
-                ? 'bg-amber-950/40 border-amber-500/50 text-amber-300'
-                : !syncStats.isOnline
-                ? 'bg-amber-950/30 border-amber-600/40 text-amber-400'
-                : 'bg-emerald-950/40 hover:bg-emerald-900/50 border-emerald-500/30 text-emerald-300 hover:text-white'
-            }`}
-            title={`Dexie.js IndexedDB: ${
-              syncStats.state === 'syncing'
-                ? 'Syncing with Firestore...'
-                : !syncStats.isOnline
-                ? 'Offline Mode (Dexie Cache Active)'
-                : 'All changes synced to Firestore'
-            }`}
-          >
-            {syncStats.state === 'syncing' ? (
-              <RefreshCw className="w-4 h-4 text-amber-400 animate-spin" />
-            ) : (
-              <Database className="w-4 h-4 text-[#00e676]" />
-            )}
-            {syncStats.pendingCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[17px] h-[17px] px-0.5 text-[9px] font-black text-black bg-amber-400 rounded-full border border-[#061712]">
-                {syncStats.pendingCount}
-              </span>
-            )}
-          </button>
+          {/* Service Worker & Cloud Synchronization Status Indicator */}
+          <SyncStatusIndicator />
 
           {/* Notification Bell with Badge */}
           <div className="relative">
@@ -191,15 +163,19 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* Language Toggle */}
-          <button
-            onClick={toggleLanguage}
-            className="flex items-center justify-center h-9 sm:h-10 px-2.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition-all active:scale-95 shadow-sm"
-            title="Toggle Bangla / English"
-          >
-            <Globe className="w-3.5 h-3.5 mr-1 text-emerald-400" />
-            <span>{language === 'bn' ? 'EN' : 'বাং'}</span>
-          </button>
+          {/* Language Switcher Dropdown */}
+          <div className="flex items-center">
+            <select
+              id="languageSelect"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as 'en' | 'bn')}
+              className="lang-select bg-[#0b141a] hover:bg-[#121e28] text-emerald-300 border border-emerald-500/30 hover:border-emerald-400 px-2 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              title="Change Language / ভাষা পরিবর্তন"
+            >
+              <option value="en" className="bg-[#0b141a] text-white">English</option>
+              <option value="bn" className="bg-[#0b141a] text-white">বাংলা</option>
+            </select>
+          </div>
 
           {/* About Modal Quick Action */}
           <button

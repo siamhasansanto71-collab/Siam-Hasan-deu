@@ -18,7 +18,8 @@ import {
   RefreshCw,
   Cloud,
   CheckCircle2,
-  Sliders
+  Sliders,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -436,11 +437,36 @@ export const SettingsMenuModal: React.FC<SettingsMenuModalProps> = ({
                       {language === 'bn' ? 'অ্যাপ ও ডেভেলপার তথ্য' : 'About App & Developer'}
                     </p>
                     <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                      Version 2.4.0 • Md Siam Hasan Santo • Bogura, BD
+                      Version 2.5.0 • Md Siam Hasan Santo • Bogura, BD
                     </p>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-teal-400 group-hover:translate-x-0.5 transition-all flex-shrink-0 ml-2" />
+              </button>
+
+              {/* 6. View Startup Splash Screen */}
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  window.dispatchEvent(new CustomEvent('show-splash'));
+                }}
+                className="w-full flex items-center justify-between py-3 sm:py-3.5 px-3.5 sm:px-4 rounded-xl bg-[#02120b] hover:bg-[#062419] border border-emerald-900/50 hover:border-emerald-500/50 transition-all text-left group active:scale-[0.99] shadow-sm"
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-950/90 border border-emerald-400/40 flex items-center justify-center text-emerald-300 group-hover:scale-105 transition-transform flex-shrink-0">
+                    <Sparkles className="w-4 h-4 text-[#00e676]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm font-bold text-white group-hover:text-emerald-300 transition-colors">
+                      {language === 'bn' ? 'স্বাগতম স্প্ল্যাশ স্ক্রিন অ্যানিমেশন' : 'Startup Splash Screen'}
+                    </p>
+                    <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                      {language === 'bn' ? 'লোগো ও ওয়েলকাম অ্যানিমেশন পুনরায় দেখুন' : 'Replay startup welcome & logo animation'}
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all flex-shrink-0 ml-2" />
               </button>
 
             </div>

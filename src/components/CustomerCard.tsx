@@ -11,7 +11,7 @@ interface CustomerCardProps {
   onQuickDue: (customer: Customer) => void;
 }
 
-export const CustomerCard: React.FC<CustomerCardProps> = ({
+const CustomerCardComponent: React.FC<CustomerCardProps> = ({
   customer,
   index,
   onOpenLedger,
@@ -151,3 +151,14 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
     </div>
   );
 };
+
+export const CustomerCard = React.memo(CustomerCardComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.customer.id === nextProps.customer.id &&
+    prevProps.customer.totalDue === nextProps.customer.totalDue &&
+    prevProps.customer.name === nextProps.customer.name &&
+    prevProps.customer.phone === nextProps.customer.phone &&
+    prevProps.customer.updatedAt === nextProps.customer.updatedAt &&
+    prevProps.index === nextProps.index
+  );
+});

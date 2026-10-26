@@ -31,7 +31,7 @@ export interface DexieExpense extends Expense {
 
 export interface SyncQueueItem {
   id?: number;
-  entity: 'customer' | 'transaction' | 'profile';
+  entity: 'customer' | 'transaction' | 'profile' | 'dailySale' | 'expense';
   operation: 'create' | 'update' | 'delete';
   documentId: string;
   ownerId: string;
@@ -86,6 +86,7 @@ export class SiamPharmaDexieDB extends Dexie {
    * Clear all cached data belonging to a specific user (or demo user)
    */
   async clearUserData(ownerId: string): Promise<void> {
+    if (!ownerId) return;
     await this.transaction('rw', [this.customers, this.transactions, this.pharmacyProfiles, this.dailySales, this.expenses, this.syncQueue], async () => {
       await this.customers.where('ownerId').equals(ownerId).delete();
       await this.transactions.where('ownerId').equals(ownerId).delete();
@@ -97,53 +98,47 @@ export class SiamPharmaDexieDB extends Dexie {
   }
 
   /**
-   * Get pending synchronization operations count
+   * Clear all local demo data
+   */
+  async clearDemoData(): Promise<void> {
+    await this.clearUserData('demo_user');
+  }
+
+  /**
+   * Get pending synchronization operations count for a specific owner
    */
   async getPendingCount(ownerId?: string): Promise<number> {
-    if (ownerId) {
-      return await this.syncQueue
-        .where('ownerId')
-        .equals(ownerId)
-        .and(item => item.status === 'pending' || item.status === 'failed')
-        .count();
-    }
+    if (!ownerId) return 0;
     return await this.syncQueue
-      .where('status')
-      .anyOf(['pending', 'failed'])
+      .where('ownerId')
+      .equals(ownerId)
+      .and(item => item.status === 'pending' || item.status === 'failed')
       .count();
   }
 
   /**
-   * Retrieve storage stats
+   * Retrieve storage stats strictly scoped by ownerId
    */
   async getStorageStats(ownerId?: string): Promise<{
     customerCount: number;
     transactionCount: number;
     pendingQueueCount: number;
   }> {
-    if (ownerId) {
-      const [customerCount, transactionCount, pendingQueueCount] = await Promise.all([
-        this.customers.where('ownerId').equals(ownerId).count(),
-        this.transactions.where('ownerId').equals(ownerId).count(),
-        this.getPendingCount(ownerId)
-      ]);
-      return { customerCount, transactionCount, pendingQueueCount };
+    if (!ownerId) {
+      return { customerCount: 0, transactionCount: 0, pendingQueueCount: 0 };
     }
-
     const [customerCount, transactionCount, pendingQueueCount] = await Promise.all([
-      this.customers.count(),
-      this.transactions.count(),
-      this.getPendingCount()
+      this.customers.where('ownerId').equals(ownerId).count(),
+      this.transactions.where('ownerId').equals(ownerId).count(),
+      this.getPendingCount(ownerId)
     ]);
     return { customerCount, transactionCount, pendingQueueCount };
   }
 
   async getDailySales(ownerId?: string): Promise<DailySale[]> {
     try {
-      if (ownerId) {
-        return await this.dailySales.where('ownerId').equals(ownerId).toArray();
-      }
-      return await this.dailySales.toArray();
+      if (!ownerId) return [];
+      return await this.dailySales.where('ownerId').equals(ownerId).toArray();
     } catch {
       return [];
     }
@@ -171,10 +166,8 @@ export class SiamPharmaDexieDB extends Dexie {
 
   async getExpenses(ownerId?: string): Promise<Expense[]> {
     try {
-      if (ownerId) {
-        return await this.expenses.where('ownerId').equals(ownerId).toArray();
-      }
-      return await this.expenses.toArray();
+      if (!ownerId) return [];
+      return await this.expenses.where('ownerId').equals(ownerId).toArray();
     } catch {
       return [];
     }

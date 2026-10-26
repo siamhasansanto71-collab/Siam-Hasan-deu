@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Siam Pharma Due Management ",
-  "short_name": "Siam Pharma Due Management ",
-  "description": "Siam Pharma Due Management - কাস্টমার বাকি ও দেনা-পাওনা হিসাব খাতা (Customer Due & Credit Ledger Management)",
+  "name": "S S Pharma - Customer Due & Credit Ledger",
+  "short_name": "S S Pharma",
+  "description": "Modern, secure customer dues and credit ledger management system for S S Pharma (এস এস ফার্মা) with real-time cloud sync, transaction tracking, and payment history.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

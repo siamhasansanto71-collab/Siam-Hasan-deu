@@ -185,7 +185,14 @@ export const translations = {
     searchCustomerLabel: "Customer Account (Optional for Due)",
     unselectCustomer: "Switch to Cash Sale",
     confirmDueSaleBtn: "✓ Confirm Customer Due Sale",
-    noCustomersFoundSearch: "No matching customer found"
+    noCustomersFoundSearch: "No matching customer found",
+
+    // Fast POS Dashboard & Multi-language
+    fastPosTitle: "Fast POS System",
+    fastPosLabel: "Sales Amount (BDT):",
+    fastPosPlaceholder: "Enter amount...",
+    fastPosBtn: "Complete Sale",
+    fastPosSuccess: "Sale completed successfully! Amount: "
   },
   bn: {
     brandName: "সিয়াম ফার্মা বাকি ব্যবস্থাপনা",
@@ -371,6 +378,13 @@ export const translations = {
     searchCustomerLabel: "কাস্টমার নির্বাচন (বাকি বিক্রির জন্য ঐচ্ছিক)",
     unselectCustomer: "বাতিল করে ক্যাশ বিক্রি করুন",
     confirmDueSaleBtn: "✓ কাস্টমার বাকির খাতায় যুক্ত করুন",
-    noCustomersFoundSearch: "কোনো কাস্টমার পাওয়া যায়নি"
+    noCustomersFoundSearch: "কোনো কাস্টমার পাওয়া যায়নি",
+
+    // Fast POS Dashboard & Multi-language
+    fastPosTitle: "দ্রুত বিক্রয় সিস্টেম",
+    fastPosLabel: "বিক্রয়ের পরিমাণ (টাকা):",
+    fastPosPlaceholder: "পরিমাণ লিখুন...",
+    fastPosBtn: "বিক্রি সম্পন্ন করুন",
+    fastPosSuccess: "সফলভাবে বিক্রি সম্পন্ন হয়েছে! পরিমাণ: "
   }
 };
